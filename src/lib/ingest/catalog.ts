@@ -59,7 +59,7 @@ export async function ingestChannel(): Promise<{
 
 async function upsertVideo(channelId: string, v: YtVideo): Promise<void> {
   const durationSec = isoDurationToSeconds(v.contentDetails?.duration);
-  const { isShort, method } = await detectShort(v.id, durationSec);
+  const { isShort, method } = await detectShort(v.id);
 
   await withTransaction(async (client) => {
     await client.query(

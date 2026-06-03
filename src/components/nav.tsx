@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Video, TrendingUp, Users, Image as ImageIcon,
-  Flame, Lightbulb, DollarSign, ClipboardCheck, Wand2,
+  Flame, Lightbulb, DollarSign, ClipboardCheck, Wand2, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/videos", label: "Vídeos", icon: Video },
   { href: "/outliers", label: "Outliers", icon: Flame },
+  { href: "/guion", label: "Guion", icon: FileText },
   { href: "/audience", label: "Audiencia", icon: Users },
   { href: "/thumbnails", label: "Miniaturas", icon: ImageIcon },
   { href: "/trends", label: "Tendencias", icon: TrendingUp },

@@ -185,6 +185,10 @@ export async function getMonetizationData() {
   return latestSnapshot<Record<string, unknown>>("monetization");
 }
 
+export async function getScriptAnalysisData() {
+  return latestSnapshot<Record<string, unknown>>("guion");
+}
+
 export async function getSeoData() {
   return latestSnapshot<Record<string, unknown>>("seo");
 }

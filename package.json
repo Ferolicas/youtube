@@ -15,7 +15,8 @@
     "worker:trends": "tsx src/workers/trends.ts",
     "worker:analysis": "tsx src/workers/analysis.ts",
     "ingest:full": "tsx src/workers/sync.ts --full",
-    "verify:llm": "tsx src/workers/verify-llm.ts"
+    "verify:llm": "tsx src/workers/verify-llm.ts",
+    "reclassify:shorts": "tsx src/workers/reclassify-shorts.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -8,6 +8,7 @@ import { computeTiming } from "@/lib/analysis/timing";
 import { computeThumbnailAnalysis } from "@/lib/analysis/thumbnails-analysis";
 import { computeSeoAudit } from "@/lib/analysis/seo-audit";
 import { computeMonetization } from "@/lib/analysis/monetization";
+import { computeScriptAnalysis } from "@/lib/analysis/script-analysis";
 import { generateRecommendations } from "@/lib/recommendations/engine";
 import { isMain } from "@/lib/utils/is-main";
 
@@ -23,6 +24,7 @@ export async function runAnalysis(): Promise<void> {
     ["thumbnails", computeThumbnailAnalysis],
     ["seo", computeSeoAudit],
     ["monetization", computeMonetization],
+    ["guion", computeScriptAnalysis],
     ["recommendations", generateRecommendations],
   ];
   for (const [name, fn] of steps) {
