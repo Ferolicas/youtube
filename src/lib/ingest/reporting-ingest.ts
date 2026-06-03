@@ -5,6 +5,7 @@ import { env } from "@/config/env";
 import { createLogger } from "@/lib/utils/logger";
 import {
   listJobs,
+  listReportTypes,
   createJob,
   listReports,
   downloadReport,
@@ -24,8 +25,28 @@ export async function ensureReportingJobs(): Promise<void> {
       [j.id, j.reportTypeId]
     );
   }
+
+  // Solo intentamos crear jobs para tipos que el canal tiene DISPONIBLES.
+  // jobs.create devuelve 404 NOT_FOUND para tipos no disponibles (p. ej. revenue
+  // sin YPP, o tipos que aún no aplican al canal): es esperado, no un bug. Pre-filtrar
+  // con reportTypes.list evita ese 404 y el ruido en logs.
+  let availableTypes: Set<string>;
+  try {
+    const types = await listReportTypes();
+    availableTypes = new Set(types.map((t) => t.id));
+  } catch (e) {
+    // Si no podemos listar, no bloqueamos: intentamos crear y dejamos que el 404 decida.
+    log.warn(`no se pudieron listar reportTypes (se intentará crear igualmente): ${String(e)}`);
+    availableTypes = new Set();
+  }
+
+  const skipped: string[] = [];
   for (const type of WANTED_REPORT_TYPES) {
     if (existingTypes.has(type)) continue;
+    if (availableTypes.size > 0 && !availableTypes.has(type)) {
+      skipped.push(type);
+      continue;
+    }
     try {
       const job = await createJob(type, `pk_${type}`);
       await query(
@@ -35,9 +56,17 @@ export async function ensureReportingJobs(): Promise<void> {
       );
       log.info(`job creado: ${type} (${job.id})`);
     } catch (e) {
-      // p. ej. revenue no disponible si no hay YPP visible para reporting
-      log.warn(`no se pudo crear job ${type}: ${String(e)}`);
+      const status = (e as { status?: number }).status;
+      if (status === 404) {
+        // Tipo no disponible para este canal todavía: esperado, sin ruido por-tipo.
+        skipped.push(type);
+      } else {
+        log.warn(`no se pudo crear job ${type}: ${String(e)}`);
+      }
     }
+  }
+  if (skipped.length > 0) {
+    log.info(`reporting: ${skipped.length} tipo(s) no disponible(s) (esperado, omitidos): ${skipped.join(", ")}`);
   }
 }
 
