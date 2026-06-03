@@ -6,9 +6,9 @@ import { fmtNum, fmtPct } from "@/lib/utils/cn";
 import { formatSeconds } from "@/lib/utils/duration";
 import type { VideoListRow } from "@/lib/dashboard/queries";
 
-type SortKey = "views" | "retention" | "published_at" | "duration_seconds" | "subs";
+type SortKey = "views" | "retention" | "ctr" | "published_at" | "duration_seconds" | "subs";
 
-export function VideosTable({ rows }: { rows: VideoListRow[] }) {
+export function VideosTable({ rows, channelCtr }: { rows: VideoListRow[]; channelCtr: number | null }) {
   const [filter, setFilter] = useState<"all" | "long" | "short">("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("views");
@@ -55,6 +55,12 @@ export function VideosTable({ rows }: { rows: VideoListRow[] }) {
         />
         <span className="text-xs text-muted">{filtered.length} vídeos</span>
       </div>
+      {channelCtr !== null && (
+        <p className="text-xs text-muted">
+          CTR medio de canal (ponderado): <span className="font-medium text-fg">{fmtPct(channelCtr)}</span>.
+          Los marcados <span className="text-warn">▼</span> están por debajo: miniaturas candidatas a mejorar.
+        </p>
+      )}
 
       <div className="overflow-auto rounded-xl border border-border">
         <table className="w-full">
@@ -64,6 +70,7 @@ export function VideosTable({ rows }: { rows: VideoListRow[] }) {
               <Th>Tipo</Th>
               {header("Vistas", "views")}
               {header("Retención", "retention")}
+              {header("CTR", "ctr")}
               {header("Duración", "duration_seconds")}
               {header("Subs", "subs")}
               {header("Publicado", "published_at")}
@@ -76,6 +83,14 @@ export function VideosTable({ rows }: { rows: VideoListRow[] }) {
                 <Td>{v.is_short ? <Badge tone="info">Short</Badge> : <Badge>Largo</Badge>}</Td>
                 <Td className="text-right tabular">{fmtNum(Number(v.views))}</Td>
                 <Td className="text-right tabular">{v.retention ? fmtPct(Number(v.retention)) : "—"}</Td>
+                <Td className="text-right tabular">
+                  {v.ctr ? (
+                    (() => {
+                      const below = channelCtr !== null && Number(v.ctr) < channelCtr;
+                      return <span className={below ? "font-medium text-warn" : ""}>{fmtPct(Number(v.ctr))}{below ? " ▼" : ""}</span>;
+                    })()
+                  ) : "—"}
+                </Td>
                 <Td className="text-right tabular">{formatSeconds(v.duration_seconds ?? 0)}</Td>
                 <Td className="text-right tabular">{v.subs ? fmtNum(Number(v.subs)) : "—"}</Td>
                 <Td className="text-right text-muted">{v.published_at?.slice(0, 10)}</Td>

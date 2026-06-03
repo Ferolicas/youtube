@@ -58,6 +58,7 @@ export async function getOverview() {
 export interface VideoListRow {
   video_id: string; title: string; is_short: boolean; published_at: string;
   duration_seconds: number; views: string; retention: string | null; subs: string | null;
+  ctr: string | null;
 }
 export async function listVideos(format?: "long" | "short"): Promise<VideoListRow[]> {
   return query<VideoListRow>(`
@@ -69,12 +70,40 @@ export async function listVideos(format?: "long" | "short"): Promise<VideoListRo
             FROM video_stats_daily GROUP BY video_id)
     SELECT v.video_id, v.title, v.is_short, v.published_at::text, v.duration_seconds,
            COALESCE(snap.view_count,0)::text AS views,
-           agg.ret::numeric(6,2)::text AS retention, agg.subs::text AS subs
+           agg.ret::numeric(6,2)::text AS retention, agg.subs::text AS subs,
+           s.impressions_ctr::numeric(6,2)::text AS ctr
     FROM videos v
     LEFT JOIN snap ON snap.video_id=v.video_id
     LEFT JOIN agg ON agg.video_id=v.video_id
+    LEFT JOIN studio_content_stats s ON s.video_id=v.video_id
     ${format ? `WHERE v.is_short=${format === "short"}` : ""}
     ORDER BY COALESCE(snap.view_count,0) DESC
+  `);
+}
+
+/** CTR medio de canal ponderado por impresiones (umbral para marcar miniaturas a mejorar). */
+export async function getChannelCtr(): Promise<number | null> {
+  const r = await queryOne<{ ctr: string | null }>(
+    `SELECT (SUM(impressions * impressions_ctr) / NULLIF(SUM(impressions),0))::numeric(6,2)::text AS ctr
+     FROM studio_content_stats WHERE impressions_ctr IS NOT NULL AND impressions IS NOT NULL`
+  );
+  return r?.ctr ? Number(r.ctr) : null;
+}
+
+export interface EndScreenRow {
+  video_id: string; title: string | null; clicks: number; shown: number; ctr: string | null;
+}
+/** Rendimiento de pantallas finales por vídeo (dato exclusivo de YouTube Studio). */
+export async function getEndScreensData(): Promise<EndScreenRow[]> {
+  return query<EndScreenRow>(`
+    SELECT s.video_id, v.title,
+           COALESCE(s.endscreen_clicks,0)::int AS clicks,
+           COALESCE(s.endscreens_shown,0)::int AS shown,
+           s.endscreen_ctr::numeric(6,2)::text AS ctr
+    FROM studio_content_stats s JOIN videos v ON v.video_id=s.video_id
+    WHERE COALESCE(s.endscreens_shown,0) > 0
+    ORDER BY s.endscreen_clicks DESC NULLS LAST, s.endscreen_ctr DESC NULLS LAST
+    LIMIT 50
   `);
 }
 
