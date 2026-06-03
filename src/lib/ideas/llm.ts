@@ -1,13 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { env } from "@/config/env";
 
 export function llmAvailable(): boolean {
-  return env.ANTHROPIC_API_KEY.length > 0;
+  return env.OPENAI_API_KEY.length > 0;
 }
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+let client: OpenAI | null = null;
+function getClient(): OpenAI {
+  if (!client) client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   return client;
 }
 
@@ -18,18 +18,17 @@ export async function llmComplete(params: {
   maxTokens?: number;
 }): Promise<string> {
   if (!llmAvailable()) {
-    throw new Error("LLM_UNAVAILABLE: configura ANTHROPIC_API_KEY para ideas/guiones con IA.");
+    throw new Error("LLM_UNAVAILABLE: configura OPENAI_API_KEY para ideas/guiones con IA.");
   }
-  const res = await getClient().messages.create({
+  const res = await getClient().chat.completions.create({
     model: env.LLM_MODEL,
     max_tokens: params.maxTokens ?? 2000,
-    system: params.system,
-    messages: [{ role: "user", content: params.user }],
+    messages: [
+      { role: "system", content: params.system },
+      { role: "user", content: params.user },
+    ],
   });
-  return res.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  return res.choices[0]?.message?.content ?? "";
 }
 
 /** Intenta parsear el primer bloque JSON de una respuesta del LLM. */

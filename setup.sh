@@ -183,7 +183,7 @@ print_next_steps() {
   echo "Pendiente que completes TÚ en .env:"
   echo "  • GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI (ver RUNBOOK §2)"
   echo "  • YOUTUBE_API_KEY (opcional, para tendencias)"
-  echo "  • ANTHROPIC_API_KEY (opcional, para guiones)"
+  echo "  • OPENAI_API_KEY (opcional, para guiones)"
   echo "  • APP_URL y dominio en Caddyfile (producción)"
   echo
   echo "Luego:"

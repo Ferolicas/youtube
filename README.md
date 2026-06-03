@@ -45,4 +45,4 @@ Detalle completo en el RUNBOOK.
 - **Vídeos de baja vista**: demografía/geografía/retención por vídeo pueden venir vacías por umbral de privacidad.
 - **Monetización**: requiere YPP + scope monetario (tu canal lo tiene).
 - **Google Trends**: sin API oficial; señal best-effort (fallback a YouTube search).
-- **Guiones de ideas**: requieren `ANTHROPIC_API_KEY` (las ideas funcionan sin LLM).
+- **Guiones de ideas**: requieren `OPENAI_API_KEY` (las ideas funcionan sin LLM).

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 /**
  * Configuración central tipada. Falla rápido si falta algo crítico.
- * Las claves opcionales se validan en el punto de uso (p. ej. ANTHROPIC_API_KEY).
+ * Las claves opcionales se validan en el punto de uso (p. ej. OPENAI_API_KEY).
  */
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -35,8 +35,8 @@ const schema = z.object({
   DATA_DIR: z.string().default("./data"),
   MEDIA_DIR: z.string().default("./media"),
 
-  ANTHROPIC_API_KEY: z.string().optional().default(""),
-  LLM_MODEL: z.string().default("claude-opus-4-8"),
+  OPENAI_API_KEY: z.string().optional().default(""),
+  LLM_MODEL: z.string().default("gpt-4o"),
 
   QUOTA_DATA_DAILY: z.coerce.number().default(10000),
   QUOTA_ANALYTICS_DAILY: z.coerce.number().default(10000),

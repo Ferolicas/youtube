@@ -21,7 +21,7 @@ instala deps Node + venv Python, aplica migraciones, hace el build y arranca PM2
 Flags individuales: `--system`, `--db`, `--app` (default), `--start`. Ver `./setup.sh --help`.
 
 **Tras el bootstrap, completa a mano en `.env`** lo que solo tú tienes:
-`GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` (RUNBOOK §2), y opcionalmente `YOUTUBE_API_KEY` y `ANTHROPIC_API_KEY`.
+`GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` (RUNBOOK §2), y opcionalmente `YOUTUBE_API_KEY` y `OPENAI_API_KEY`.
 Luego: conecta tu cuenta en la web y ejecuta `npm run ingest:full`.
 
 > El resto de este documento detalla cada paso por si prefieres hacerlo manualmente o necesitas depurar.
@@ -228,7 +228,7 @@ Retén también `media/` (miniaturas) y `data/` (CSV reporting) si quieres conse
 | `whisper falló` | falta faster-whisper o modelo | `pip install -r requirements.txt`; revisa `PYTHON_BIN`. |
 | `yt-dlp audio falló` | yt-dlp desactualizado / sin ffmpeg | `pip install -U yt-dlp`; instala ffmpeg; revisa `FFMPEG_BIN`. |
 | Clustering omitido | sin scikit-learn | `pip install -r requirements.txt`. |
-| Ideas sin guion | sin `ANTHROPIC_API_KEY` | Configúrala; las ideas funcionan sin LLM, los guiones no. |
+| Ideas sin guion | sin `OPENAI_API_KEY` | Configúrala; las ideas funcionan sin LLM, los guiones no. |
 | `search` no devuelve nada | cuota agotada o sin API key | Espera reset diario o añade `YOUTUBE_API_KEY`. |
 | CTR de miniatura ausente | no existe en la API | Importa CSV de Studio a `thumbnail_ctr_import` (ver §13). |
 

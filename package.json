@@ -17,13 +17,13 @@
     "ingest:full": "tsx src/workers/sync.ts --full"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",
     "jose": "^5.9.6",
     "lucide-react": "^0.469.0",
     "next": "^15.1.6",
     "node-cron": "^3.0.3",
+    "openai": "^6.41.0",
     "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

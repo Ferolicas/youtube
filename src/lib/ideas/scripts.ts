@@ -7,11 +7,11 @@ const log = createLogger("ideas:scripts");
 
 /**
  * Genera un guion optimizado para retención + mid-rolls AdSense para una idea.
- * Requiere LLM (ANTHROPIC_API_KEY). Sin él, se informa explícitamente.
+ * Requiere LLM (OPENAI_API_KEY). Sin él, se informa explícitamente.
  */
 export async function generateScript(ideaId: number): Promise<{ ok: boolean; reason?: string }> {
   if (!llmAvailable()) {
-    return { ok: false, reason: "LLM no configurado (ANTHROPIC_API_KEY). El guion requiere IA." };
+    return { ok: false, reason: "LLM no configurado (OPENAI_API_KEY). El guion requiere IA." };
   }
   const idea = await queryOne<{
     title: string; hook_angle: string; suggested_duration_sec: number; keywords: string[];

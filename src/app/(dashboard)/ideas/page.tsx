@@ -17,7 +17,7 @@ export default async function IdeasPage() {
       {ideas.length === 0 ? (
         <EmptyState
           title="Sin ideas todavía"
-          hint="Ejecuta “Tendencias” para generar las ideas del día (combina lo que ya funciona en tu canal + tendencias). Los guiones requieren ANTHROPIC_API_KEY."
+          hint="Ejecuta “Tendencias” para generar las ideas del día (combina lo que ya funciona en tu canal + tendencias). Los guiones requieren OPENAI_API_KEY."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
