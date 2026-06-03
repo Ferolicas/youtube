@@ -1,0 +1,31 @@
+# Caddy — reverse proxy con HTTPS automático (Let's Encrypt).
+# Sustituye tu-dominio.com por tu dominio real y recarga: caddy reload --config /etc/caddy/Caddyfile
+
+tu-dominio.com {
+	encode zstd gzip
+
+	# Cabeceras de seguridad (complementan las de next.config.mjs)
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Healthcheck público
+	handle /api/health {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# App
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output file /var/log/caddy/planeta-keto.log
+		format json
+	}
+}

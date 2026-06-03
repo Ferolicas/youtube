@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background-color: hsl(222 47% 6%);
+  color: hsl(210 30% 96%);
+}
+
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(222 20% 22%); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(222 20% 30%); }
+
+.tabular { font-variant-numeric: tabular-nums; }
