@@ -14,7 +14,8 @@
     "worker:transcribe": "tsx src/workers/transcribe.ts",
     "worker:trends": "tsx src/workers/trends.ts",
     "worker:analysis": "tsx src/workers/analysis.ts",
-    "ingest:full": "tsx src/workers/sync.ts --full"
+    "ingest:full": "tsx src/workers/sync.ts --full",
+    "verify:llm": "tsx src/workers/verify-llm.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
