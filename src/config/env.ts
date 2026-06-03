@@ -67,3 +67,16 @@ export const YOUTUBE_SCOPES = [
   "https://www.googleapis.com/auth/yt-analytics.readonly",
   "https://www.googleapis.com/auth/yt-analytics-monetary.readonly",
 ] as const;
+
+/**
+ * Scopes de identidad necesarios para que el callback pueda llamar a userinfo
+ * y obtener el email del usuario (verificación contra ALLOWED_EMAIL). Sin esto,
+ * el token no tiene permiso de perfil y userinfo devuelve 401.
+ */
+export const IDENTITY_SCOPES = [
+  "openid",
+  "https://www.googleapis.com/auth/userinfo.email",
+] as const;
+
+/** Todos los scopes solicitados en el consentimiento OAuth (identidad + YouTube). */
+export const OAUTH_SCOPES = [...IDENTITY_SCOPES, ...YOUTUBE_SCOPES] as const;

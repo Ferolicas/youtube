@@ -1,4 +1,4 @@
-import { env, YOUTUBE_SCOPES } from "@/config/env";
+import { env, OAUTH_SCOPES } from "@/config/env";
 
 /**
  * Flujo OAuth 2.0 manual con Google (Authorization Code).
@@ -13,7 +13,7 @@ export function buildAuthUrl(state: string): string {
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
-    scope: YOUTUBE_SCOPES.join(" "),
+    scope: OAUTH_SCOPES.join(" "),
     state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
