@@ -4,12 +4,13 @@ import { getSession } from "@/lib/auth/session";
 import { runSync } from "@/workers/sync";
 import { runAnalysis } from "@/workers/analysis";
 import { runTrends } from "@/workers/trends";
+import { generateDailyIdeas } from "@/lib/ideas/generate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const bodySchema = z.object({
-  task: z.enum(["sync", "sync_full", "analysis", "trends"]),
+  task: z.enum(["sync", "sync_full", "analysis", "trends", "ideas"]),
 });
 
 /** Dispara tareas manualmente desde la UI (además de los crons). */
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
     task === "sync" ? runSync({ full: false })
     : task === "sync_full" ? runSync({ full: true })
     : task === "analysis" ? runAnalysis()
-    : runTrends();
+    : task === "trends" ? runTrends()
+    : generateDailyIdeas();
   job.catch((e) => console.error(`[api/sync] tarea ${task} falló:`, e));
 
   return NextResponse.json({ ok: true, started: task });

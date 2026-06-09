@@ -17,8 +17,10 @@
 import type { ScriptIdea } from "@/lib/ideas/script-prompt";
 
 // Placeholders inertes SOLO para satisfacer la validación de config/env.ts.
-// dotenv no sobreescribe vars ya presentes, así que OPENAI_API_KEY/LLM_MODEL se siguen
-// leyendo del .env real. Estas claves no se usan: el verificador no toca BD ni sesión.
+// config/env.ts ahora carga el .env con override:true, así que si el .env real
+// trae estas claves, sus valores (válidos) ganan; si no, quedan estos placeholders.
+// En ambos casos OPENAI_API_KEY/LLM_MODEL se leen del .env real y la validación pasa.
+// Estas claves no se usan: el verificador no toca BD ni sesión.
 process.env.ALLOWED_EMAIL ??= "verify@example.com";
 process.env.SESSION_SECRET ??= "verify-llm-placeholder-session-secret-000000";
 process.env.TOKEN_ENC_KEY ??= "0".repeat(64);

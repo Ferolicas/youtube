@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
-import { RefreshCw, BarChart3, TrendingUp } from "lucide-react";
+import { RefreshCw, BarChart3, TrendingUp, Lightbulb } from "lucide-react";
 
-type Task = "sync" | "sync_full" | "analysis" | "trends";
+type Task = "sync" | "sync_full" | "analysis" | "trends" | "ideas";
 
 export function ActionBar() {
   const [busy, setBusy] = useState<Task | null>(null);
@@ -33,6 +33,9 @@ export function ActionBar() {
       {msg && <span className="mr-2 text-xs text-muted">{msg}</span>}
       <button className={btn} disabled={!!busy} onClick={() => trigger("sync")}>
         <RefreshCw size={13} className={busy === "sync" ? "animate-spin" : ""} /> Sync
+      </button>
+      <button className={btn} disabled={!!busy} onClick={() => trigger("ideas")}>
+        <Lightbulb size={13} className={busy === "ideas" ? "animate-pulse" : ""} /> Ideas diarias
       </button>
       <button className={btn} disabled={!!busy} onClick={() => trigger("trends")}>
         <TrendingUp size={13} /> Tendencias

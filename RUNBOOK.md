@@ -57,11 +57,11 @@ sudo apt install -y caddy
 sudo -u postgres psql
 ```
 ```sql
-CREATE USER pk_user WITH PASSWORD 'cambia-esto';
-CREATE DATABASE planeta_keto OWNER pk_user;
+CREATE USER youtube_app WITH PASSWORD 'cambia-esto';
+CREATE DATABASE youtube_analytics OWNER youtube_app;
 \q
 ```
-`DATABASE_URL=postgres://pk_user:cambia-esto@localhost:5432/planeta_keto`
+`DATABASE_URL=postgres://youtube_app:cambia-esto@localhost:5432/youtube_analytics`
 
 ---
 
@@ -121,7 +121,45 @@ pm2 startup           # ejecuta el comando que imprime (arranque al boot)
 pm2 status
 ```
 
-Procesos: `pk-web` (3000), `pk-sync`, `pk-transcribe`, `pk-trends`, `pk-analysis`.
+Procesos: `pk-web` (3000), `pk-transcribe`, `pk-daily` (cron único 07:00).
+
+> `pk-daily` ejecuta el pipeline completo (sync → analysis → trends+ideas) y
+> **reemplaza** a los antiguos `pk-sync`/`pk-trends`/`pk-analysis`. Carga su
+> config desde `/apps/youtube/.env` (vía `cwd`+`PK_ENV_FILE` en
+> `ecosystem.config.cjs` y `override:true` en `config/env.ts`) y verifica con
+> `SELECT current_database()` que está en la BD correcta antes de escribir.
+
+#### PRIMER deploy con pk-daily (VPS ya en marcha con los crons viejos)
+
+Orden importa: `pk-daily` **todavía no existe**, así que NO lo metas en el `reload`
+(fallaría). Primero recarga lo que ya corre, luego crea el cron nuevo. Solo afecta
+a procesos `pk-*` (por nombre); **no toca** `cfanalisis-*`/`n8n`/`ketoscan`/`planetaketo`.
+
+```bash
+git pull
+npm ci
+
+# Blindaje del migrate MANUAL: override:true protege a PM2, pero este comando lo
+# corres en TU shell. Si hay una DATABASE_URL exportada, podría ganar (run-migrations
+# no tiene guardia de current_database). Verifica que esté vacía y, si no, bórrala:
+echo "$DATABASE_URL"        # debe salir VACÍO
+unset DATABASE_URL          # ejecútalo si lo anterior NO estaba vacío
+
+npm run migrate             # aplica 005_recipes.sql (idempotente)
+npm run build
+
+# Recarga SOLO los procesos que YA existen (pk-daily aún no):
+pm2 reload pk-web pk-transcribe
+
+# Switch de crons (solo la 1ª vez): borra los 3 viejos y crea pk-daily:
+pm2 delete pk-sync pk-trends pk-analysis
+pm2 start ecosystem.config.cjs --only pk-daily
+pm2 save
+
+# Verifica que pk-daily está en la BD correcta (nombre dinámico desde el .env):
+pm2 logs pk-daily --lines 30
+#   esperado: (worker:daily) conectado a DB 'youtube_analytics' como 'youtube_app' (esperada por .env: 'youtube_analytics')
+```
 
 ---
 
@@ -152,7 +190,9 @@ Apunta el DNS A de tu dominio al VPS; Caddy emite el certificado solo.
    ```
    o botones **Analizar** / **Tendencias** en la UI.
 
-A partir de aquí, los crons lo hacen solo (sync 06:00, trends 07:00, analysis 07:30, TZ configurable).
+A partir de aquí, `pk-daily` lo hace solo: a las **07:00** (TZ configurable, `CRON_DAILY`)
+ejecuta en orden sync → analysis → trends+ideas. Los botones del dashboard
+(Sync / Ideas diarias / Tendencias / Analizar) siguen disponibles para disparos manuales.
 
 ---
 
@@ -162,10 +202,11 @@ A partir de aquí, los crons lo hacen solo (sync 06:00, trends 07:00, analysis 0
 pm2 logs pk-sync --lines 100        # ver logs de un proceso
 pm2 logs pk-transcribe
 pm2 restart pk-web                  # reiniciar tras un deploy
-pm2 reload all
+pm2 reload pk-web pk-transcribe pk-daily   # recarga SOLO esta app (no uses `all`)
 pm2 monit                           # CPU/RAM en vivo
 
 # disparos manuales
+npm run pipeline                    # pipeline diario completo, una vez (sync->analysis->trends+ideas)
 npm run ingest:full                 # re-backfill completo
 npx tsx src/workers/sync.ts --once  # sync incremental único
 npx tsx src/workers/analysis.ts --once
@@ -188,9 +229,13 @@ SELECT api, day, SUM(cost_units) FROM api_quota_log GROUP BY api, day ORDER BY d
 ```bash
 git pull
 npm ci
+echo "$DATABASE_URL"   # debe estar VACÍO; npm run migrate corre en TU shell y
+unset DATABASE_URL     # run-migrations no tiene guardia de current_database.
 npm run migrate
 npm run build
-pm2 reload all
+# Recarga SOLO los procesos de esta app (por nombre). NO uses `pm2 reload all`:
+# el VPS comparte PM2 con otros proyectos (cfanalisis-*, n8n, ketoscan, planetaketo).
+pm2 reload pk-web pk-transcribe pk-daily
 ```
 
 ---
@@ -199,10 +244,10 @@ pm2 reload all
 
 ```bash
 # Backup diario (añádelo a crontab del sistema)
-0 3 * * * pg_dump -U pk_user planeta_keto | gzip > /var/backups/pk_$(date +\%F).sql.gz
+0 3 * * * pg_dump -U youtube_app youtube_analytics | gzip > /var/backups/pk_$(date +\%F).sql.gz
 
 # Restore
-gunzip -c /var/backups/pk_2026-06-01.sql.gz | psql -U pk_user planeta_keto
+gunzip -c /var/backups/pk_2026-06-01.sql.gz | psql -U youtube_app youtube_analytics
 ```
 Retén también `media/` (miniaturas) y `data/` (CSV reporting) si quieres conservar artefactos; son regenerables.
 

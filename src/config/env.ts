@@ -1,5 +1,18 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+import { resolve } from "node:path";
 import { z } from "zod";
+
+/**
+ * Carga del .env con `override: true`: el ARCHIVO siempre gana sobre cualquier
+ * variable ya presente en el entorno (p. ej. heredada del demonio de PM2). Esto
+ * evita el incidente de heredar una DATABASE_URL de otro proyecto y escribir en
+ * la BD equivocada. `PK_ENV_FILE` permite fijar la ruta absoluta del .env
+ * (lo usa pk-daily en el VPS: /apps/youtube/.env); si no, se usa ./.env del cwd.
+ */
+loadEnv({
+  path: process.env.PK_ENV_FILE ?? resolve(process.cwd(), ".env"),
+  override: true,
+});
 
 /**
  * Configuración central tipada. Falla rápido si falta algo crítico.
@@ -46,6 +59,8 @@ const schema = z.object({
   CRON_SYNC: z.string().default("0 6 * * *"),
   CRON_TRENDS: z.string().default("0 7 * * *"),
   CRON_ANALYSIS: z.string().default("30 7 * * *"),
+  // Cron único del pipeline diario (sync -> analysis -> trends+ideas).
+  CRON_DAILY: z.string().default("0 7 * * *"),
 });
 
 function load() {
