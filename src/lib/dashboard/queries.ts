@@ -228,3 +228,30 @@ export async function getRecommendationsData() {
      WHERE status='open' ORDER BY impact DESC, effort ASC`
   );
 }
+
+export interface RecipeRow {
+  id: string;
+  title: string;
+  hook_angle: string | null;
+  thumbnail_brief: string | null;
+  suggested_duration_sec: number | null;
+  keywords: string[] | null;
+  script: string;
+  model: string | null;
+  for_date: string | null;
+  created_at: string;
+}
+/** Recetas guardadas (idea + guion), de nueva a vieja. */
+export async function getRecipes(): Promise<RecipeRow[]> {
+  return query<RecipeRow>(
+    `SELECT id::text, title, hook_angle, thumbnail_brief, suggested_duration_sec, keywords,
+            script, model, for_date::text AS for_date, created_at::text AS created_at
+     FROM recipes ORDER BY created_at DESC`
+  );
+}
+
+/** Borra una receta de forma permanente. Devuelve true si existía. */
+export async function deleteRecipe(id: number): Promise<boolean> {
+  const rows = await query<{ id: string }>(`DELETE FROM recipes WHERE id=$1 RETURNING id::text`, [id]);
+  return rows.length > 0;
+}
