@@ -121,7 +121,24 @@ pm2 startup           # ejecuta el comando que imprime (arranque al boot)
 pm2 status
 ```
 
-Procesos: `pk-web` (3000), `pk-sync`, `pk-transcribe`, `pk-trends`, `pk-analysis`.
+Procesos: `pk-web` (3000), `pk-transcribe`, `pk-daily` (cron único 07:00).
+
+> `pk-daily` ejecuta el pipeline completo (sync → analysis → trends+ideas) y
+> **reemplaza** a los antiguos `pk-sync`/`pk-trends`/`pk-analysis`. Carga su
+> config desde `/apps/youtube/.env` (vía `cwd`+`PK_ENV_FILE` en
+> `ecosystem.config.cjs` y `override:true` en `config/env.ts`) y verifica con
+> `SELECT current_database()` que está en la BD correcta antes de escribir.
+
+#### Migración desde los crons antiguos (en un VPS ya en marcha)
+
+Solo afecta a procesos `pk-*` (por nombre); **no toca** otros proyectos del VPS:
+
+```bash
+pm2 delete pk-sync pk-trends pk-analysis      # borra SOLO los 3 cron viejos
+pm2 start ecosystem.config.cjs --only pk-daily # arranca SOLO el nuevo cron
+pm2 save
+pm2 logs pk-daily --lines 30                    # verifica la BD: "conectado a DB 'planeta_keto'"
+```
 
 ---
 
@@ -152,7 +169,9 @@ Apunta el DNS A de tu dominio al VPS; Caddy emite el certificado solo.
    ```
    o botones **Analizar** / **Tendencias** en la UI.
 
-A partir de aquí, los crons lo hacen solo (sync 06:00, trends 07:00, analysis 07:30, TZ configurable).
+A partir de aquí, `pk-daily` lo hace solo: a las **07:00** (TZ configurable, `CRON_DAILY`)
+ejecuta en orden sync → analysis → trends+ideas. Los botones del dashboard
+(Sync / Ideas diarias / Tendencias / Analizar) siguen disponibles para disparos manuales.
 
 ---
 
@@ -162,10 +181,11 @@ A partir de aquí, los crons lo hacen solo (sync 06:00, trends 07:00, analysis 0
 pm2 logs pk-sync --lines 100        # ver logs de un proceso
 pm2 logs pk-transcribe
 pm2 restart pk-web                  # reiniciar tras un deploy
-pm2 reload all
+pm2 reload pk-web pk-transcribe pk-daily   # recarga SOLO esta app (no uses `all`)
 pm2 monit                           # CPU/RAM en vivo
 
 # disparos manuales
+npm run pipeline                    # pipeline diario completo, una vez (sync->analysis->trends+ideas)
 npm run ingest:full                 # re-backfill completo
 npx tsx src/workers/sync.ts --once  # sync incremental único
 npx tsx src/workers/analysis.ts --once
@@ -190,7 +210,9 @@ git pull
 npm ci
 npm run migrate
 npm run build
-pm2 reload all
+# Recarga SOLO los procesos de esta app (por nombre). NO uses `pm2 reload all`:
+# el VPS comparte PM2 con otros proyectos (cfanalisis-*, n8n, ketoscan, planetaketo).
+pm2 reload pk-web pk-transcribe pk-daily
 ```
 
 ---

@@ -14,6 +14,8 @@
     "worker:transcribe": "tsx src/workers/transcribe.ts",
     "worker:trends": "tsx src/workers/trends.ts",
     "worker:analysis": "tsx src/workers/analysis.ts",
+    "worker:daily": "tsx src/workers/daily.ts",
+    "pipeline": "tsx src/workers/daily.ts --once",
     "ingest:full": "tsx src/workers/sync.ts --full",
     "verify:llm": "tsx src/workers/verify-llm.ts",
     "reclassify:shorts": "tsx src/workers/reclassify-shorts.ts",
