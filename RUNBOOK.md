@@ -139,13 +139,13 @@ a procesos `pk-*` (por nombre); **no toca** `cfanalisis-*`/`n8n`/`ketoscan`/`pla
 git pull
 npm ci
 
-# Blindaje del migrate MANUAL: override:true protege a PM2, pero este comando lo
-# corres en TU shell. Si hay una DATABASE_URL exportada, podría ganar (run-migrations
-# no tiene guardia de current_database). Verifica que esté vacía y, si no, bórrala:
+# Higiene del shell: el migrate YA verifica current_database() y aborta si la BD
+# no es la del .env (igual que pk-daily). Aun así, limpia una DATABASE_URL
+# exportada para no depender de la guardia:
 echo "$DATABASE_URL"        # debe salir VACÍO
 unset DATABASE_URL          # ejecútalo si lo anterior NO estaba vacío
 
-npm run migrate             # aplica 005_recipes.sql (idempotente)
+npm run migrate             # aplica 005_recipes.sql; aborta si la BD es la equivocada
 npm run build
 
 # Recarga SOLO los procesos que YA existen (pk-daily aún no):
@@ -229,8 +229,10 @@ SELECT api, day, SUM(cost_units) FROM api_quota_log GROUP BY api, day ORDER BY d
 ```bash
 git pull
 npm ci
-echo "$DATABASE_URL"   # debe estar VACÍO; npm run migrate corre en TU shell y
-unset DATABASE_URL     # run-migrations no tiene guardia de current_database.
+# Higiene: limpia una DATABASE_URL exportada en tu shell (el migrate ya tiene
+# guardia de current_database y abortaría, pero mejor no depender de ella):
+echo "$DATABASE_URL"   # debe estar VACÍO
+unset DATABASE_URL     # ejecútalo si NO estaba vacío
 npm run migrate
 npm run build
 # Recarga SOLO los procesos de esta app (por nombre). NO uses `pm2 reload all`:

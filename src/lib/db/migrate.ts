@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pool } from "@/lib/db/pool";
+import { assertCorrectDatabase } from "@/lib/db/guard";
 import { createLogger } from "@/lib/utils/logger";
 
 const log = createLogger("migrate");
@@ -12,6 +13,11 @@ const MIGRATIONS_DIR = join(process.cwd(), "migrations");
  * Idempotente: se apoya en la tabla _migrations.
  */
 export async function runMigrations(): Promise<void> {
+  // Guardia: aborta si la BD conectada no coincide con la del .env (DATABASE_URL),
+  // igual que pk-daily. Evita aplicar migraciones en la base equivocada aunque el
+  // shell del operador tenga una DATABASE_URL exportada o herede otra.
+  await assertCorrectDatabase(log);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS _migrations (
       filename TEXT PRIMARY KEY,
