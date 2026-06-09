@@ -57,11 +57,11 @@ sudo apt install -y caddy
 sudo -u postgres psql
 ```
 ```sql
-CREATE USER pk_user WITH PASSWORD 'cambia-esto';
-CREATE DATABASE planeta_keto OWNER pk_user;
+CREATE USER youtube_app WITH PASSWORD 'cambia-esto';
+CREATE DATABASE youtube_analytics OWNER youtube_app;
 \q
 ```
-`DATABASE_URL=postgres://pk_user:cambia-esto@localhost:5432/planeta_keto`
+`DATABASE_URL=postgres://youtube_app:cambia-esto@localhost:5432/youtube_analytics`
 
 ---
 
@@ -129,15 +129,36 @@ Procesos: `pk-web` (3000), `pk-transcribe`, `pk-daily` (cron único 07:00).
 > `ecosystem.config.cjs` y `override:true` en `config/env.ts`) y verifica con
 > `SELECT current_database()` que está en la BD correcta antes de escribir.
 
-#### Migración desde los crons antiguos (en un VPS ya en marcha)
+#### PRIMER deploy con pk-daily (VPS ya en marcha con los crons viejos)
 
-Solo afecta a procesos `pk-*` (por nombre); **no toca** otros proyectos del VPS:
+Orden importa: `pk-daily` **todavía no existe**, así que NO lo metas en el `reload`
+(fallaría). Primero recarga lo que ya corre, luego crea el cron nuevo. Solo afecta
+a procesos `pk-*` (por nombre); **no toca** `cfanalisis-*`/`n8n`/`ketoscan`/`planetaketo`.
 
 ```bash
-pm2 delete pk-sync pk-trends pk-analysis      # borra SOLO los 3 cron viejos
-pm2 start ecosystem.config.cjs --only pk-daily # arranca SOLO el nuevo cron
+git pull
+npm ci
+
+# Blindaje del migrate MANUAL: override:true protege a PM2, pero este comando lo
+# corres en TU shell. Si hay una DATABASE_URL exportada, podría ganar (run-migrations
+# no tiene guardia de current_database). Verifica que esté vacía y, si no, bórrala:
+echo "$DATABASE_URL"        # debe salir VACÍO
+unset DATABASE_URL          # ejecútalo si lo anterior NO estaba vacío
+
+npm run migrate             # aplica 005_recipes.sql (idempotente)
+npm run build
+
+# Recarga SOLO los procesos que YA existen (pk-daily aún no):
+pm2 reload pk-web pk-transcribe
+
+# Switch de crons (solo la 1ª vez): borra los 3 viejos y crea pk-daily:
+pm2 delete pk-sync pk-trends pk-analysis
+pm2 start ecosystem.config.cjs --only pk-daily
 pm2 save
-pm2 logs pk-daily --lines 30                    # verifica la BD: "conectado a DB 'planeta_keto'"
+
+# Verifica que pk-daily está en la BD correcta (nombre dinámico desde el .env):
+pm2 logs pk-daily --lines 30
+#   esperado: (worker:daily) conectado a DB 'youtube_analytics' como 'youtube_app' (esperada por .env: 'youtube_analytics')
 ```
 
 ---
@@ -208,6 +229,8 @@ SELECT api, day, SUM(cost_units) FROM api_quota_log GROUP BY api, day ORDER BY d
 ```bash
 git pull
 npm ci
+echo "$DATABASE_URL"   # debe estar VACÍO; npm run migrate corre en TU shell y
+unset DATABASE_URL     # run-migrations no tiene guardia de current_database.
 npm run migrate
 npm run build
 # Recarga SOLO los procesos de esta app (por nombre). NO uses `pm2 reload all`:
@@ -221,10 +244,10 @@ pm2 reload pk-web pk-transcribe pk-daily
 
 ```bash
 # Backup diario (añádelo a crontab del sistema)
-0 3 * * * pg_dump -U pk_user planeta_keto | gzip > /var/backups/pk_$(date +\%F).sql.gz
+0 3 * * * pg_dump -U youtube_app youtube_analytics | gzip > /var/backups/pk_$(date +\%F).sql.gz
 
 # Restore
-gunzip -c /var/backups/pk_2026-06-01.sql.gz | psql -U pk_user planeta_keto
+gunzip -c /var/backups/pk_2026-06-01.sql.gz | psql -U youtube_app youtube_analytics
 ```
 Retén también `media/` (miniaturas) y `data/` (CSV reporting) si quieres conservar artefactos; son regenerables.
 
