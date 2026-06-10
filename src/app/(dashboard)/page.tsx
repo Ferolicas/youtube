@@ -15,7 +15,7 @@ export default async function OverviewPage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Suscriptores" value={fmtNum(Number(o.channel?.subscriber_count ?? 0))} accent />
         <Stat label="Vídeos largos" value={fmtNum(Number(o.counts?.longs ?? 0))} sub={`mediana ${fmtNum(o.medians.long ?? 0)} vistas`} />
-        <Stat label="Shorts" value={fmtNum(Number(o.counts?.shorts ?? 0))} sub={`mediana ${fmtNum(o.medians.short ?? 0)} vistas`} />
+        <Stat label="Shorts" value={fmtNum(Number(o.counts?.shorts ?? 0))} sub="solo referencia" />
         <Stat label="Transcritos" value={`${fmtNum(Number(o.counts?.transcribed ?? 0))}/${fmtNum(Number(o.counts?.total ?? 0))}`} />
       </div>
 

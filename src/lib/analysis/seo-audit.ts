@@ -1,5 +1,6 @@
 import { query, queryOne } from "@/lib/db/pool";
 import { saveSnapshot } from "@/lib/analysis/queries";
+import { longOnlySql } from "@/lib/analysis/scope";
 import { createLogger } from "@/lib/utils/logger";
 
 const log = createLogger("analysis:seo");
@@ -45,7 +46,8 @@ export async function computeSeoAudit() {
   // vídeos sin tags
   const noTags = await queryOne<{ n: string }>(
     `SELECT count(*)::text AS n FROM videos v
-     WHERE NOT EXISTS (SELECT 1 FROM video_tags t WHERE t.video_id=v.video_id)`
+     WHERE ${longOnlySql("v")}
+       AND NOT EXISTS (SELECT 1 FROM video_tags t WHERE t.video_id=v.video_id)`
   );
   if (Number(noTags?.n ?? 0) > 0) {
     findings.push({
@@ -57,7 +59,7 @@ export async function computeSeoAudit() {
 
   // descripciones pobres
   const shortDesc = await queryOne<{ n: string }>(
-    `SELECT count(*)::text AS n FROM videos WHERE length(coalesce(description,'')) < 150`
+    `SELECT count(*)::text AS n FROM videos v WHERE ${longOnlySql("v")} AND length(coalesce(v.description,'')) < 150`
   );
   if (Number(shortDesc?.n ?? 0) > 0) {
     findings.push({
@@ -69,7 +71,7 @@ export async function computeSeoAudit() {
 
   // títulos demasiado largos (se truncan ~60-70 chars)
   const longTitles = await queryOne<{ n: string }>(
-    `SELECT count(*)::text AS n FROM videos WHERE length(coalesce(title,'')) > 70`
+    `SELECT count(*)::text AS n FROM videos v WHERE ${longOnlySql("v")} AND length(coalesce(v.title,'')) > 70`
   );
   if (Number(longTitles?.n ?? 0) > 0) {
     findings.push({
@@ -81,7 +83,7 @@ export async function computeSeoAudit() {
 
   // idioma de audio sin declarar
   const noAudioLang = await queryOne<{ n: string }>(
-    `SELECT count(*)::text AS n FROM videos WHERE default_audio_language IS NULL`
+    `SELECT count(*)::text AS n FROM videos v WHERE ${longOnlySql("v")} AND v.default_audio_language IS NULL`
   );
   if (Number(noAudioLang?.n ?? 0) > 0) {
     findings.push({
@@ -92,7 +94,8 @@ export async function computeSeoAudit() {
   }
 
   const tagStats = await query<{ tag: string; n: string }>(
-    `SELECT tag, count(*)::text AS n FROM video_tags GROUP BY tag ORDER BY count(*) DESC LIMIT 20`
+    `SELECT t.tag, count(*)::text AS n FROM video_tags t JOIN videos v ON v.video_id=t.video_id
+     WHERE ${longOnlySql("v")} GROUP BY t.tag ORDER BY count(*) DESC LIMIT 20`
   );
 
   await saveSnapshot("seo", "all", {

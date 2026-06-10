@@ -1,5 +1,6 @@
 import { query, queryOne } from "@/lib/db/pool";
 import { saveSnapshot } from "@/lib/analysis/queries";
+import { longOnlySql } from "@/lib/analysis/scope";
 import { hasMonetaryScope } from "@/lib/auth/tokens";
 import { createLogger } from "@/lib/utils/logger";
 
@@ -41,6 +42,7 @@ export async function computeMonetization() {
            AVG(NULLIF(r.playback_based_cpm,0))::numeric(8,2)::text AS pb_cpm
     FROM videos v JOIN video_revenue_daily r ON r.video_id=v.video_id
     LEFT JOIN snap ON snap.video_id=v.video_id
+    WHERE ${longOnlySql("v")}
     GROUP BY v.video_id, v.title, v.duration_seconds
     ORDER BY SUM(r.estimated_revenue) DESC NULLS LAST
   `);
@@ -74,10 +76,12 @@ export async function computeMonetization() {
 
   // por país LATAM
   const byCountry = await query<{ country_code: string; revenue: string; cpm: string | null; mp: string }>(`
-    SELECT country_code, SUM(estimated_revenue)::numeric(12,2)::text AS revenue,
-           AVG(NULLIF(cpm,0))::numeric(8,2)::text AS cpm,
-           SUM(monetized_playbacks)::text AS mp
-    FROM video_revenue_geo GROUP BY country_code ORDER BY SUM(estimated_revenue) DESC NULLS LAST LIMIT 25
+    SELECT g.country_code, SUM(g.estimated_revenue)::numeric(12,2)::text AS revenue,
+           AVG(NULLIF(g.cpm,0))::numeric(8,2)::text AS cpm,
+           SUM(g.monetized_playbacks)::text AS mp
+    FROM video_revenue_geo g JOIN videos v ON v.video_id=g.video_id
+    WHERE ${longOnlySql("v")}
+    GROUP BY g.country_code ORDER BY SUM(g.estimated_revenue) DESC NULLS LAST LIMIT 25
   `);
 
   // vídeos >8min sin haber capitalizado bien (RPM bajo vs mediana del bucket)

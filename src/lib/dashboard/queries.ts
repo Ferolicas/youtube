@@ -1,5 +1,6 @@
 import { query, queryOne } from "@/lib/db/pool";
 import { latestSnapshot } from "@/lib/analysis/queries";
+import { longOnlySql, INCLUDE_SHORTS } from "@/lib/analysis/scope";
 import { hasConnection, hasMonetaryScope } from "@/lib/auth/tokens";
 import { quotaSummary } from "@/lib/youtube/quota";
 import { queueStats } from "@/lib/transcription/queue";
@@ -42,7 +43,7 @@ export async function getOverview() {
   const outliers = await query<{ video_id: string; title: string; views: string; performance_ratio: string }>(
     `SELECT o.video_id, v.title, o.views::text, o.performance_ratio::text
      FROM outlier_analysis o JOIN videos v ON v.video_id=o.video_id
-     WHERE o.is_outlier ORDER BY o.views DESC LIMIT 5`
+     WHERE o.is_outlier AND ${longOnlySql("v")} ORDER BY o.views DESC LIMIT 5`
   );
   return {
     counts,
@@ -84,8 +85,9 @@ export async function listVideos(format?: "long" | "short"): Promise<VideoListRo
 /** CTR medio de canal ponderado por impresiones (umbral para marcar miniaturas a mejorar). */
 export async function getChannelCtr(): Promise<number | null> {
   const r = await queryOne<{ ctr: string | null }>(
-    `SELECT (SUM(impressions * impressions_ctr) / NULLIF(SUM(impressions),0))::numeric(6,2)::text AS ctr
-     FROM studio_content_stats WHERE impressions_ctr IS NOT NULL AND impressions IS NOT NULL`
+    `SELECT (SUM(s.impressions * s.impressions_ctr) / NULLIF(SUM(s.impressions),0))::numeric(6,2)::text AS ctr
+     FROM studio_content_stats s JOIN videos v ON v.video_id=s.video_id
+     WHERE ${longOnlySql("v")} AND s.impressions_ctr IS NOT NULL AND s.impressions IS NOT NULL`
   );
   return r?.ctr ? Number(r.ctr) : null;
 }
@@ -101,7 +103,7 @@ export async function getEndScreensData(): Promise<EndScreenRow[]> {
            COALESCE(s.endscreens_shown,0)::int AS shown,
            s.endscreen_ctr::numeric(6,2)::text AS ctr
     FROM studio_content_stats s JOIN videos v ON v.video_id=s.video_id
-    WHERE COALESCE(s.endscreens_shown,0) > 0
+    WHERE ${longOnlySql("v")} AND COALESCE(s.endscreens_shown,0) > 0
     ORDER BY s.endscreen_clicks DESC NULLS LAST, s.endscreen_ctr DESC NULLS LAST
     LIMIT 50
   `);
@@ -150,7 +152,7 @@ export async function getOutliersData() {
   const rows = await query<{ video_id: string; title: string; views: string; z_score: string; performance_ratio: string; is_short: boolean; drivers: unknown }>(
     `SELECT o.video_id, v.title, o.views::text, o.z_score::text, o.performance_ratio::text, v.is_short, o.drivers
      FROM outlier_analysis o JOIN videos v ON v.video_id=o.video_id
-     WHERE o.is_outlier ORDER BY o.views DESC`
+     WHERE o.is_outlier AND ${longOnlySql("v")} ORDER BY o.views DESC`
   );
   return { snapshot, rows };
 }
@@ -158,7 +160,8 @@ export async function getOutliersData() {
 export async function getAudienceData() {
   return {
     long: await latestSnapshot<Record<string, unknown>>("audience", "long"),
-    short: await latestSnapshot<Record<string, unknown>>("audience", "short"),
+    // Shorts solo si el toggle los incluye; por defecto la pestaña Audiencia es long-only.
+    short: INCLUDE_SHORTS ? await latestSnapshot<Record<string, unknown>>("audience", "short") : null,
   };
 }
 
@@ -169,7 +172,9 @@ export async function getThumbnailsData() {
     SELECT t.video_id, v.title, t.image_url, COALESCE(snap.view_count,0)::text AS views,
            t.brightness::numeric(4,2)::text AS brightness, t.saturation::numeric(4,2)::text AS saturation
     FROM thumbnails t JOIN videos v ON v.video_id=t.video_id
-    LEFT JOIN snap ON snap.video_id=t.video_id ORDER BY COALESCE(snap.view_count,0) DESC LIMIT 40
+    LEFT JOIN snap ON snap.video_id=t.video_id
+    WHERE ${longOnlySql("v")}
+    ORDER BY COALESCE(snap.view_count,0) DESC LIMIT 40
   `);
   const ctrImported = await queryOne<{ n: string }>(`SELECT count(*)::text AS n FROM thumbnail_ctr_import`);
   return { snapshot, list, ctrImported: Number(ctrImported?.n ?? 0) };

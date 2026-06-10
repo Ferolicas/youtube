@@ -3,6 +3,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { query, withTransaction } from "@/lib/db/pool";
 import { env } from "@/config/env";
+import { longOnlySql } from "@/lib/analysis/scope";
 import { createLogger } from "@/lib/utils/logger";
 
 const log = createLogger("analysis:clusters");
@@ -41,6 +42,7 @@ export async function computeClusters(): Promise<void> {
     LEFT JOIN snap ON snap.video_id=v.video_id
     LEFT JOIN ret ON ret.video_id=v.video_id
     LEFT JOIN rev ON rev.video_id=v.video_id
+    WHERE ${longOnlySql("v")}
   `);
 
   const usable = rows.filter((r) => (r.title ?? "").length + (r.transcript ?? "").length > 20);

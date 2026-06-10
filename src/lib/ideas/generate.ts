@@ -1,5 +1,6 @@
 import { query } from "@/lib/db/pool";
 import { latestSnapshot } from "@/lib/analysis/queries";
+import { longOnlySql } from "@/lib/analysis/scope";
 import { llmAvailable, llmComplete, extractJson } from "@/lib/ideas/llm";
 import { createLogger } from "@/lib/utils/logger";
 
@@ -71,14 +72,14 @@ async function buildContext(): Promise<Context> {
   );
   const outliers = await query<{ title: string }>(
     `SELECT v.title FROM outlier_analysis o JOIN videos v ON v.video_id=o.video_id
-     WHERE o.is_outlier ORDER BY o.views DESC LIMIT 8`
+     WHERE o.is_outlier AND ${longOnlySql("v")} ORDER BY o.views DESC LIMIT 8`
   );
   const trendKw = await query<{ keyword: string }>(
     `SELECT keyword FROM trend_keywords WHERE for_date >= (now()-interval '3 day')::date
      GROUP BY keyword ORDER BY SUM(score) DESC LIMIT 20`
   );
   const competitors = await query<{ title: string }>(
-    `SELECT title FROM competitor_videos ORDER BY vph DESC NULLS LAST LIMIT 12`
+    `SELECT cv.title FROM competitor_videos cv WHERE ${longOnlySql("cv")} ORDER BY cv.vph DESC NULLS LAST LIMIT 12`
   );
   const timing = await latestSnapshot<{ best_hours_utc: { hour_utc: number }[] }>("timing", "long");
   const channel = await query<{ title: string }>(`SELECT title FROM channels LIMIT 1`);

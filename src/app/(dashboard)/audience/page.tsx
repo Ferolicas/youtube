@@ -1,4 +1,5 @@
 import { getAudienceData } from "@/lib/dashboard/queries";
+import { INCLUDE_SHORTS } from "@/lib/analysis/scope";
 import { Card, CardTitle, Stat, Badge, EmptyState, Th, Td } from "@/components/ui/primitives";
 import { SimpleBar } from "@/components/charts/charts";
 import { fmtNum } from "@/lib/utils/cn";
@@ -65,7 +66,7 @@ export default async function AudiencePage() {
       <h1 className="text-xl font-bold">Audiencia habitual</h1>
       <p className="text-sm text-muted">Perfil separado por formato. Nota: en vídeos de pocas vistas YouTube oculta demografía/geografía por privacidad; los agregados son fiables.</p>
       <Block snap={long as AudSnap | null} title="Vídeos largos" />
-      <Block snap={short as AudSnap | null} title="Shorts" />
+      {INCLUDE_SHORTS && <Block snap={short as AudSnap | null} title="Shorts" />}
     </div>
   );
 }

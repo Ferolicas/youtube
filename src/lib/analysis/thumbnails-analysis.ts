@@ -1,6 +1,7 @@
 import { query } from "@/lib/db/pool";
 import { saveSnapshot } from "@/lib/analysis/queries";
 import { pearson } from "@/lib/analysis/stats";
+import { longOnlySql } from "@/lib/analysis/scope";
 import { createLogger } from "@/lib/utils/logger";
 
 const log = createLogger("analysis:thumbnails");
@@ -34,6 +35,7 @@ export async function computeThumbnailAnalysis() {
     LEFT JOIN snap ON snap.video_id=t.video_id
     LEFT JOIN ret ON ret.video_id=t.video_id
     LEFT JOIN ctr ON ctr.video_id=t.video_id
+    WHERE ${longOnlySql("v")}
   `);
 
   const hasCtr = rows.some((r) => r.ctr !== null);

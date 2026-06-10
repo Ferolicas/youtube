@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getOutliersData } from "@/lib/dashboard/queries";
+import { INCLUDE_SHORTS } from "@/lib/analysis/scope";
 import { Card, CardTitle, Badge, Th, Td, EmptyState } from "@/components/ui/primitives";
 import { fmtNum } from "@/lib/utils/cn";
 
@@ -21,7 +22,7 @@ export default async function OutliersPage() {
       <p className="text-sm text-muted">Compara estadísticamente tus vídeos de alto rendimiento (≥10K o z≥2) contra la mediana del canal e identifica qué variables los explican.</p>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {(["long", "short"] as const).map((fmt) => {
+        {(INCLUDE_SHORTS ? (["long", "short"] as const) : (["long"] as const)).map((fmt) => {
           const b = snap?.[fmt];
           if (!b) return null;
           return (
