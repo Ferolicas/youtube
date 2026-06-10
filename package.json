@@ -19,7 +19,8 @@
     "ingest:full": "tsx src/workers/sync.ts --full",
     "verify:llm": "tsx src/workers/verify-llm.ts",
     "reclassify:shorts": "tsx src/workers/reclassify-shorts.ts",
-    "import:studio": "tsx src/workers/import-studio.ts"
+    "import:studio": "tsx src/workers/import-studio.ts",
+    "audios:srt": "tsx src/workers/audios-to-srt.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
