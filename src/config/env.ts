@@ -55,6 +55,15 @@ const schema = z.object({
   QUOTA_ANALYTICS_DAILY: z.coerce.number().default(10000),
   QUOTA_SAFETY_MARGIN: z.coerce.number().default(0.92),
 
+  // Alcance de la inteligencia: por defecto SOLO vídeos largos (los Shorts solo
+  // aparecen en la pestaña Vídeos). INCLUDE_SHORTS=true los incluye en TODO el
+  // análisis. Parseo manual: z.coerce.boolean() trataría "false" como true
+  // (string no vacío), por eso comparamos el texto explícitamente.
+  INCLUDE_SHORTS: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true" || v === "1"),
+
   TZ: z.string().default("America/Mexico_City"),
   CRON_SYNC: z.string().default("0 6 * * *"),
   CRON_TRENDS: z.string().default("0 7 * * *"),
