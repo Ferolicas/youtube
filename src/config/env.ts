@@ -49,7 +49,30 @@ const schema = z.object({
   MEDIA_DIR: z.string().default("./media"),
 
   OPENAI_API_KEY: z.string().optional().default(""),
+  ANTHROPIC_API_KEY: z.string().optional().default(""),
   LLM_MODEL: z.string().default("gpt-4o"),
+  EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),
+
+  // --- Tiempo real ---
+  // Pulso del catálogo: snapshot de statistics cada N minutos (~1u por 50 vídeos).
+  CRON_PULSE: z.string().default("*/30 * * * *"),
+  // Breakout: alerta si un vídeo gana en 1h >= BREAKOUT_MIN_GAIN vistas Y
+  // >= BREAKOUT_FACTOR × su ritmo horario mediano de los últimos 7 días.
+  BREAKOUT_MIN_GAIN: z.coerce.number().int().positive().default(150),
+  BREAKOUT_FACTOR: z.coerce.number().positive().default(4),
+
+  // Telegram (opcional): si faltan, las alertas solo se guardan en BD.
+  TELEGRAM_BOT_TOKEN: z.string().optional().default(""),
+  TELEGRAM_CHAT_ID: z.string().optional().default(""),
+
+  // WebSub (push de subidas). Secret para verificar X-Hub-Signature; vacío = off.
+  WEBSUB_SECRET: z.string().optional().default(""),
+  // Nº de canales competidores a los que suscribirse/seguir en el radar.
+  COMPETITOR_RADAR_SIZE: z.coerce.number().int().positive().default(15),
+  // Día de la semana (0=domingo) para el descubrimiento por search.list (100u).
+  TRENDS_SEARCH_DOW: z.coerce.number().int().min(0).max(6).default(1),
+  // Keywords a comprobar posición por día (cada una = 100u de Data API).
+  RANK_KEYWORDS_PER_DAY: z.coerce.number().int().min(0).default(5),
 
   QUOTA_DATA_DAILY: z.coerce.number().default(10000),
   QUOTA_ANALYTICS_DAILY: z.coerce.number().default(10000),

@@ -5,12 +5,16 @@ import {
   dailyVideoStats,
   retentionCurve,
   trafficSources,
+  trafficSourceDetail,
   demographics,
   geography,
   devices,
   revenueDaily,
   revenueByCountry,
+  channelDailyStats,
+  channelSearchTerms,
   today,
+  isoDaysAgo,
 } from "@/lib/youtube/analytics-api";
 
 const log = createLogger("ingest:analytics");
@@ -86,6 +90,32 @@ export async function ingestVideoAnalytics(
     ["source_type", "source_detail", "views", "estimated_minutes_watched"]
   );
 
+  // --- detalle de tráfico (SEO): búsquedas reales + vídeos que nos recomiendan ---
+  for (const st of ["YT_SEARCH", "RELATED_VIDEO"] as const) {
+    try {
+      const rows = await trafficSourceDetail(videoId, st, start, end);
+      await withTransaction(async (c) => {
+        await c.query(
+          `DELETE FROM video_traffic_details WHERE video_id=$1 AND source_type=$2`,
+          [videoId, st]
+        );
+        for (const r of rows) {
+          const detail = String(r.insightTrafficSourceDetail ?? "").trim();
+          if (!detail) continue;
+          await c.query(
+            `INSERT INTO video_traffic_details (video_id, source_type, detail, views,
+               estimated_minutes_watched, period_start, period_end)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+            [videoId, st, detail, num(r.views), num(r.estimatedMinutesWatched), start, end]
+          );
+        }
+      });
+    } catch (e) {
+      // esperable en vídeos sin tráfico de ese tipo o bajo umbral; no es error
+      log.warn(`traffic detail ${st} ${videoId}: ${String(e).slice(0, 160)}`);
+    }
+  }
+
   // --- demografía (puede venir vacía por umbral de privacidad) ---
   await replacePeriodRows(videoId, start, end, "video_demographics",
     async () => demographics(videoId, start, end),
@@ -139,7 +169,12 @@ export async function ingestVideoAnalytics(
   }
 }
 
-/** Helper: borra el periodo y reinserta filas agregadas por dimensión. */
+/**
+ * Helper: mantiene UN ÚNICO set acumulado (publicación→hoy) por vídeo.
+ * Borra por video_id (no por periodo exacto): antes, al mover period_end cada
+ * día, los sets viejos quedaban huérfanos y los SUM() de los consumidores
+ * inflaban vistas/ingresos ×(nº de syncs). El periodo queda como metadato.
+ */
 async function replacePeriodRows(
   videoId: string,
   start: string,
@@ -152,10 +187,7 @@ async function replacePeriodRows(
   try {
     const rows = await fetch();
     await withTransaction(async (c) => {
-      await c.query(
-        `DELETE FROM ${table} WHERE video_id=$1 AND period_start=$2 AND period_end=$3`,
-        [videoId, start, end]
-      );
+      await c.query(`DELETE FROM ${table} WHERE video_id=$1`, [videoId]);
       for (const r of rows) {
         const vals = mapCols(r);
         const placeholders = ["$1", "$2", "$3", ...vals.map((_, i) => `$${i + 4}`)];
@@ -171,13 +203,26 @@ async function replacePeriodRows(
   }
 }
 
-/** Itera todos los vídeos refrescando analytics, priorizando outliers/recientes. */
+/**
+ * Itera vídeos refrescando analytics. En modo incremental usa VÍDEOS ACTIVOS,
+ * no solo recién publicados: publicados <45d, O con vistas en los últimos 14d
+ * (lo sabemos por la serie diaria), O outliers. Así los vídeos viejos que
+ * siguen generando vistas/ingresos no se quedan congelados.
+ */
 export async function ingestAllAnalytics(opts: { onlyRecent?: boolean } = {}): Promise<number> {
   const monetary = await hasMonetaryScope();
+  const activeWhere = `
+    WHERE v.published_at > now() - interval '45 days'
+       OR EXISTS (SELECT 1 FROM video_stats_daily d
+                   WHERE d.video_id = v.video_id
+                     AND d.date >= (now() - interval '14 days')::date
+                     AND COALESCE(d.views,0) > 0)
+       OR EXISTS (SELECT 1 FROM outlier_analysis o
+                   WHERE o.video_id = v.video_id AND o.is_outlier)`;
   const rows = await query<{ video_id: string; published_at: string }>(
-    `SELECT video_id, published_at::text AS published_at FROM videos
-     ${opts.onlyRecent ? "WHERE published_at > now() - interval '45 days'" : ""}
-     ORDER BY published_at DESC`
+    `SELECT v.video_id, v.published_at::text AS published_at FROM videos v
+     ${opts.onlyRecent ? activeWhere : ""}
+     ORDER BY v.published_at DESC NULLS LAST`
   );
   let n = 0;
   for (const v of rows) {
@@ -189,6 +234,68 @@ export async function ingestAllAnalytics(opts: { onlyRecent?: boolean } = {}): P
       log.error(`analytics falló ${v.video_id}`, String(e));
     }
   }
+  await ingestChannelAnalytics(opts.onlyRecent ?? true);
   log.info(`analytics refrescado para ${n} vídeos (monetary=${monetary})`);
   return n;
+}
+
+/**
+ * Serie diaria a nivel CANAL (channel_stats_daily) + top búsquedas del canal
+ * (channel_search_terms). Incremental: últimos 90 días; full: toda la historia.
+ */
+export async function ingestChannelAnalytics(onlyRecent = true): Promise<void> {
+  const ch = await queryOne<{ channel_id: string; published_at: string | null; subscriber_count: string | null }>(
+    `SELECT channel_id, published_at::text AS published_at, subscriber_count::text AS subscriber_count
+     FROM channels LIMIT 1`
+  );
+  if (!ch) return;
+  const start = onlyRecent
+    ? isoDaysAgo(90)
+    : (ch.published_at?.slice(0, 10) ?? "2010-01-01");
+  const end = today();
+
+  try {
+    const daily = await channelDailyStats(start, end);
+    for (const r of daily) {
+      await query(
+        `INSERT INTO channel_stats_daily (channel_id, date, views, estimated_minutes_watched,
+           subscribers_gained, subscribers_lost)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (channel_id, date) DO UPDATE SET
+           views=EXCLUDED.views, estimated_minutes_watched=EXCLUDED.estimated_minutes_watched,
+           subscribers_gained=EXCLUDED.subscribers_gained, subscribers_lost=EXCLUDED.subscribers_lost`,
+        [ch.channel_id, r.day, num(r.views), num(r.estimatedMinutesWatched),
+         num(r.subscribersGained), num(r.subscribersLost)]
+      );
+    }
+    // snapshot del total de subs de hoy (de channels.list del catálogo)
+    if (ch.subscriber_count) {
+      await query(
+        `UPDATE channel_stats_daily SET subscribers=$2 WHERE channel_id=$1 AND date=$3`,
+        [ch.channel_id, Number(ch.subscriber_count), end]
+      );
+    }
+    log.info(`canal: ${daily.length} días de serie diaria (${start}..${end})`);
+  } catch (e) {
+    log.warn(`channel daily stats: ${String(e)}`);
+  }
+
+  try {
+    const terms = await channelSearchTerms(isoDaysAgo(90), end);
+    for (const r of terms) {
+      const term = String(r.insightTrafficSourceDetail ?? "").trim();
+      if (!term) continue;
+      await query(
+        `INSERT INTO channel_search_terms (term, views, estimated_minutes_watched, period_start, period_end)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (term, period_end) DO UPDATE SET
+           views=EXCLUDED.views, estimated_minutes_watched=EXCLUDED.estimated_minutes_watched,
+           captured_at=now()`,
+        [term, num(r.views), num(r.estimatedMinutesWatched), isoDaysAgo(90), end]
+      );
+    }
+    log.info(`canal: ${terms.length} términos de búsqueda (90d)`);
+  } catch (e) {
+    log.warn(`channel search terms: ${String(e)}`);
+  }
 }

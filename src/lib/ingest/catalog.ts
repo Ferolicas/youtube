@@ -1,4 +1,4 @@
-import { query, withTransaction } from "@/lib/db/pool";
+import { query, queryOne, withTransaction } from "@/lib/db/pool";
 import { createLogger } from "@/lib/utils/logger";
 import { isoDurationToSeconds } from "@/lib/utils/duration";
 import { detectShort } from "@/lib/youtube/shorts";
@@ -59,7 +59,22 @@ export async function ingestChannel(): Promise<{
 
 export async function upsertVideo(channelId: string, v: YtVideo): Promise<void> {
   const durationSec = isoDurationToSeconds(v.contentDetails?.duration);
-  const { isShort, method } = await detectShort(v.id);
+
+  // GUARDIA: una vez clasificado, NO se re-detecta en cada sync. Antes, un fallo
+  // transitorio de la URL /shorts (consent/captcha) devolvía NULL y pisaba una
+  // clasificación buena -> el vídeo desaparecía del análisis por formato. De paso
+  // se evitan cientos de fetches a youtube.com por sync.
+  const existing = await queryOne<{ is_short: boolean | null; short_detection_method: string | null }>(
+    `SELECT is_short, short_detection_method FROM videos WHERE video_id=$1`,
+    [v.id]
+  );
+  let isShort = existing?.is_short ?? null;
+  let method = existing?.short_detection_method ?? null;
+  if (isShort === null) {
+    const det = await detectShort(v.id);
+    isShort = det.isShort;
+    method = det.method;
+  }
 
   await withTransaction(async (client) => {
     await client.query(
@@ -71,8 +86,9 @@ export async function upsertVideo(channelId: string, v: YtVideo): Promise<void> 
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now(), now())
        ON CONFLICT (video_id) DO UPDATE SET
          title=EXCLUDED.title, description=EXCLUDED.description,
-         duration_seconds=EXCLUDED.duration_seconds, is_short=EXCLUDED.is_short,
-         short_detection_method=EXCLUDED.short_detection_method,
+         duration_seconds=EXCLUDED.duration_seconds,
+         is_short=COALESCE(EXCLUDED.is_short, videos.is_short),
+         short_detection_method=COALESCE(EXCLUDED.short_detection_method, videos.short_detection_method),
          category_id=EXCLUDED.category_id, default_language=EXCLUDED.default_language,
          default_audio_language=EXCLUDED.default_audio_language,
          definition=EXCLUDED.definition, dimension=EXCLUDED.dimension,

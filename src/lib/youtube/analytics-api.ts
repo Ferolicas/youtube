@@ -156,6 +156,55 @@ export function channelDayHourActivity(start = isoDaysAgo(365), end = today()) {
   });
 }
 
+/** Serie diaria a nivel CANAL (vistas, minutos, subs ganados/perdidos). */
+export function channelDailyStats(start: string, end = today()) {
+  return analyticsQuery({
+    startDate: start,
+    endDate: end,
+    dimensions: "day",
+    metrics: "views,estimatedMinutesWatched,subscribersGained,subscribersLost",
+    sort: "day",
+    endpoint: "analytics.channelDailyStats",
+  });
+}
+
+/**
+ * Detalle de una fuente de tráfico para un vídeo. Para YT_SEARCH el detail son
+ * los TÉRMINOS DE BÚSQUEDA reales; para RELATED_VIDEO, los vídeos que nos
+ * recomiendan. La API limita a top 25 y exige sort=-views.
+ */
+export function trafficSourceDetail(
+  videoId: string,
+  sourceType: "YT_SEARCH" | "RELATED_VIDEO",
+  start = DEFAULT_START,
+  end = today()
+) {
+  return analyticsQuery({
+    startDate: start,
+    endDate: end,
+    dimensions: "insightTrafficSourceDetail",
+    metrics: "views,estimatedMinutesWatched",
+    filters: `${videoFilter(videoId)};insightTrafficSourceType==${sourceType}`,
+    sort: "-views",
+    maxResults: 25,
+    endpoint: `analytics.trafficDetail.${sourceType}`,
+  });
+}
+
+/** Detalle YT_SEARCH a nivel CANAL: top 25 búsquedas que traen vistas. */
+export function channelSearchTerms(start: string, end = today()) {
+  return analyticsQuery({
+    startDate: start,
+    endDate: end,
+    dimensions: "insightTrafficSourceDetail",
+    metrics: "views,estimatedMinutesWatched",
+    filters: "insightTrafficSourceType==YT_SEARCH",
+    sort: "-views",
+    maxResults: 25,
+    endpoint: "analytics.channelSearchTerms",
+  });
+}
+
 export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
