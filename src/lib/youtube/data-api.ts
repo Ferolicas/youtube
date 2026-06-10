@@ -128,6 +128,93 @@ export async function listChannelSections(channelId: string) {
   return res.items ?? [];
 }
 
+export interface CommentThread {
+  id: string;
+  snippet?: {
+    videoId?: string;
+    totalReplyCount?: number;
+    topLevelComment?: {
+      snippet?: {
+        textDisplay?: string;
+        textOriginal?: string;
+        authorDisplayName?: string;
+        likeCount?: number;
+        publishedAt?: string;
+      };
+    };
+  };
+}
+
+/** Hilos de comentarios de un vídeo propio (1 unidad/página, 100 por página). */
+export async function listCommentThreads(
+  videoId: string,
+  opts: { maxPages?: number; order?: "time" | "relevance" } = {}
+): Promise<CommentThread[]> {
+  const out: CommentThread[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  const maxPages = opts.maxPages ?? 2;
+  do {
+    const res = await ytCall<YtPage<CommentThread>>(`${DATA_BASE}/commentThreads`, {
+      api: "data",
+      endpoint: "commentThreads.list",
+      cost: 1,
+      query: {
+        part: "snippet",
+        videoId,
+        maxResults: 100,
+        order: opts.order ?? "time",
+        textFormat: "plainText",
+        pageToken,
+      },
+    });
+    out.push(...(res.items ?? []));
+    pageToken = res.nextPageToken;
+    pages++;
+  } while (pageToken && pages < maxPages);
+  return out;
+}
+
+/** Canales por IDs (1 unidad por lote de 50): para hidratar competidores. */
+export async function getChannelsByIds(ids: string[]): Promise<YtChannel[]> {
+  const out: YtChannel[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const res = await ytCall<YtPage<YtChannel>>(`${DATA_BASE}/channels`, {
+      api: "data",
+      endpoint: "channels.list(byIds)",
+      cost: 1,
+      query: {
+        part: "snippet,contentDetails,statistics",
+        id: batch.join(","),
+        maxResults: 50,
+      },
+    });
+    out.push(...(res.items ?? []));
+  }
+  return out;
+}
+
+/** Primera página de uploads de un canal (1 unidad): radar de competidores. */
+export async function listRecentUploads(
+  uploadsPlaylistId: string,
+  maxResults = 10
+): Promise<string[]> {
+  const res = await ytCall<YtPage<YtPlaylistItem>>(`${DATA_BASE}/playlistItems`, {
+    api: "data",
+    endpoint: "playlistItems.list(radar)",
+    cost: 1,
+    query: {
+      part: "contentDetails",
+      playlistId: uploadsPlaylistId,
+      maxResults,
+    },
+  });
+  return (res.items ?? [])
+    .map((it) => it.contentDetails?.videoId)
+    .filter((id): id is string => Boolean(id));
+}
+
 /**
  * Búsqueda (competidores / tendencias). Coste alto: 100 unidades.
  * Usa API key si está disponible para no consumir el contexto OAuth.

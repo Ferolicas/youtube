@@ -84,6 +84,17 @@ export async function getValidAccessToken(): Promise<string> {
     return refreshed.access_token;
   } catch (err) {
     log.error("refresh falló — se requiere reconectar", String(err));
+    // alerta (BD + Telegram) con dedupe diario; import dinámico para evitar ciclos
+    try {
+      const { notify } = await import("@/lib/alerts/notify");
+      await notify({
+        kind: "token_failed",
+        title: "Token de YouTube caducado o revocado",
+        detail: "Los workers no pueden llamar a la API. Entra a la web y reconecta tu cuenta.",
+        dedupeKey: `token:${new Date().toISOString().slice(0, 10)}`,
+        dedupeHours: 12,
+      });
+    } catch { /* noop */ }
     throw new Error("REFRESH_FAILED: reconecta tu cuenta de YouTube.");
   }
 }

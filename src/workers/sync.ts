@@ -7,8 +7,10 @@ import { ingestCatalog } from "@/lib/ingest/catalog";
 import { ingestAllAnalytics } from "@/lib/ingest/analytics-ingest";
 import { ingestReporting } from "@/lib/ingest/reporting-ingest";
 import { ingestAllThumbnails } from "@/lib/ingest/thumbnails";
+import { ingestAllComments } from "@/lib/ingest/comments";
 import { enqueueAllMissing } from "@/lib/transcription/queue";
 import { QuotaExceededError } from "@/lib/youtube/quota";
+import { withJobLock } from "@/lib/jobs/lock";
 import { isMain } from "@/lib/utils/is-main";
 
 const log = createLogger("worker:sync");
@@ -35,13 +37,17 @@ export async function runSync(opts: { full?: boolean } = {}): Promise<void> {
     log.warn("sin conexión OAuth: conéctate en la web primero. Sync abortado.");
     return;
   }
-  log.info(`=== SYNC ${opts.full ? "COMPLETO" : "INCREMENTAL"} ===`);
-  await recordRun("catalog", async () => { await ingestCatalog(); });
-  await recordRun("transcription_enqueue", async () => { await enqueueAllMissing(); });
-  await recordRun("reporting", async () => { await ingestReporting(); });
-  await recordRun("analytics", async () => { await ingestAllAnalytics({ onlyRecent: !opts.full }); });
-  await recordRun("thumbnails", async () => { await ingestAllThumbnails(); });
-  log.info("=== SYNC FIN ===");
+  const result = await withJobLock("sync", async () => {
+    log.info(`=== SYNC ${opts.full ? "COMPLETO" : "INCREMENTAL"} ===`);
+    await recordRun("catalog", async () => { await ingestCatalog(); });
+    await recordRun("transcription_enqueue", async () => { await enqueueAllMissing(); });
+    await recordRun("reporting", async () => { await ingestReporting(); });
+    await recordRun("analytics", async () => { await ingestAllAnalytics({ onlyRecent: !opts.full }); });
+    await recordRun("comments", async () => { await ingestAllComments(); });
+    await recordRun("thumbnails", async () => { await ingestAllThumbnails(); });
+    log.info("=== SYNC FIN ===");
+  });
+  if (result === "busy") log.warn("sync omitido: ya hay un sync en curso");
 }
 
 if (isMain(import.meta.url)) {
