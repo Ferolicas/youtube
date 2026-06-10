@@ -15,6 +15,7 @@
  *   npm run reconcile -- --apply  # adopta los tuyos y borra los ajenos
  */
 import { query, queryOne, pool } from "@/lib/db/pool";
+import { assertCorrectDatabase } from "@/lib/db/guard";
 import { createLogger } from "@/lib/utils/logger";
 import { hasConnection } from "@/lib/auth/tokens";
 import { getVideosByIds } from "@/lib/youtube/data-api";
@@ -25,6 +26,10 @@ const log = createLogger("reconcile");
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   log.info(apply ? "modo APPLY: se adoptarán y borrarán filas" : "modo DRY-RUN: solo informa (usa --apply para ejecutar)");
+
+  // Guardia: comando DESTRUCTIVO (borra con CASCADE). Aborta si la BD conectada no
+  // es la del .env, igual que migrate y pk-daily.
+  await assertCorrectDatabase(log);
 
   if (!(await hasConnection())) {
     log.error("sin conexión OAuth: conéctate en la web primero. Reconcile abortado.");
