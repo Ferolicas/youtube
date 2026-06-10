@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 interface MonSnap {
   available: boolean;
   reason?: string;
+  videos_with_revenue?: number;
   total_revenue: number;
   channel_rpm: number | null;
   by_duration: { bucket: string; videos: number; revenue: number; avg_rpm: number | null }[];
@@ -38,7 +39,7 @@ export default async function MonetizationPage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Stat label="Ingresos estimados" value={fmtMoney(snap.total_revenue)} accent />
         <Stat label="RPM del canal" value={fmtMoney(snap.channel_rpm)} />
-        <Stat label="Vídeos con ingresos" value={fmtNum(snap.top_earners.length)} />
+        <Stat label="Vídeos largos con ingresos" value={fmtNum(snap.videos_with_revenue ?? snap.top_earners.length)} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -68,7 +69,7 @@ export default async function MonetizationPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <CardTitle>Top earners</CardTitle>
+          <CardTitle>Top 15 earners</CardTitle>
           <table className="w-full">
             <thead><tr><Th>Título</Th><Th className="text-right">Ingresos</Th><Th className="text-right">RPM</Th></tr></thead>
             <tbody>

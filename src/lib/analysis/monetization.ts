@@ -96,6 +96,9 @@ export async function computeMonetization() {
 
   await saveSnapshot("monetization", "all", {
     available: true,
+    // Conteo REAL de vídeos largos con ingresos (todo el histórico); top_earners es
+    // solo una lista recortada a 15, no debe usarse como "nº de vídeos con ingresos".
+    videos_with_revenue: videoRpm.length,
     total_revenue: Number(videoRpm.reduce((a, v) => a + v.revenue, 0).toFixed(2)),
     channel_rpm: (() => {
       const rev = videoRpm.reduce((a, v) => a + v.revenue, 0);
