@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { query, withTransaction } from "@/lib/db/pool";
 import { env } from "@/config/env";
 import { longOnlySql } from "@/lib/analysis/scope";
+import { loadEmbeddings, kmeansCosine } from "@/lib/analysis/embeddings";
 import { createLogger } from "@/lib/utils/logger";
 
 const log = createLogger("analysis:clusters");
@@ -15,9 +16,10 @@ interface ClusterOut {
 }
 
 /**
- * Agrupa vídeos por tema usando TF-IDF + KMeans (script python con scikit-learn)
- * sobre título + transcripción, y correlaciona cada cluster con el rendimiento.
- * Si python/sklearn no están disponibles, registra el motivo y no rompe el pipeline.
+ * Agrupa vídeos por tema. Vía preferente: EMBEDDINGS semánticos (k-means coseno
+ * en proceso, sin python) si cubren >=60% de los vídeos con texto. Fallback:
+ * TF-IDF + KMeans (script python con scikit-learn). Correlaciona cada cluster
+ * con el rendimiento (vistas/retención/RPM).
  */
 export async function computeClusters(): Promise<void> {
   const rows = await query<{
@@ -51,6 +53,30 @@ export async function computeClusters(): Promise<void> {
     return;
   }
 
+  // --- Vía 1: embeddings semánticos (sin python) ---
+  const embeddings = await loadEmbeddings();
+  const withEmb = usable.filter((r) => embeddings.has(r.video_id));
+  if (withEmb.length >= Math.max(6, Math.floor(usable.length * 0.6))) {
+    const k = Math.max(3, Math.min(12, Math.round(Math.sqrt(withEmb.length / 2))));
+    const km = kmeansCosine(
+      withEmb.map((r) => ({ id: r.video_id, vec: embeddings.get(r.video_id)! })),
+      k
+    );
+    const titleById = new Map(usable.map((r) => [r.video_id, r.title ?? ""]));
+    const clusters: ClusterOut[] = km.map((c) => {
+      const kws = topTerms(c.members.map((m) => titleById.get(m.id) ?? ""), 6);
+      return {
+        label: kws.slice(0, 3).join(" · ") || "tema",
+        keywords: kws,
+        members: c.members.map((m) => ({ video_id: m.id, distance: m.distance })),
+      };
+    });
+    await persistClusters(clusters, usable);
+    log.info(`clusters por embeddings: ${clusters.length} (k=${k}, ${withEmb.length} vídeos)`);
+    return;
+  }
+  log.info(`embeddings insuficientes (${withEmb.length}/${usable.length}); fallback TF-IDF python`);
+
   const dir = join(process.cwd(), env.DATA_DIR, "analysis");
   await mkdir(dir, { recursive: true });
   const inPath = join(dir, "cluster_input.json");
@@ -77,14 +103,28 @@ export async function computeClusters(): Promise<void> {
     return;
   }
 
-  const clusters = result.clusters as ClusterOut[];
-  const metricsById = new Map(usable.map((r) => [r.video_id, r]));
+  await persistClusters(result.clusters as ClusterOut[], usable);
+  log.info(`clusters guardados (TF-IDF): ${(result.clusters as ClusterOut[]).length}`);
+}
 
+interface UsableRow {
+  video_id: string;
+  title: string | null;
+  is_short: boolean | null;
+  views: number;
+  retention: number | null;
+  rpm: number | null;
+}
+
+async function persistClusters(clusters: ClusterOut[], usable: UsableRow[]): Promise<void> {
+  const metricsById = new Map(usable.map((r) => [r.video_id, r]));
   await withTransaction(async (c) => {
     await c.query(`TRUNCATE cluster_members`);
     await c.query(`TRUNCATE content_clusters RESTART IDENTITY CASCADE`);
     for (const cl of clusters) {
-      const members = cl.members.map((m) => metricsById.get(m.video_id)).filter(Boolean) as NonNullable<ReturnType<typeof metricsById.get>>[];
+      const members = cl.members
+        .map((m) => metricsById.get(m.video_id))
+        .filter((x): x is UsableRow => Boolean(x));
       const views = members.map((m) => m.views);
       const avgViews = views.length ? views.reduce((a, b) => a + b, 0) / views.length : 0;
       const medViews = median(views);
@@ -111,7 +151,28 @@ export async function computeClusters(): Promise<void> {
       }
     }
   });
-  log.info(`clusters guardados: ${clusters.length}`);
+}
+
+const LABEL_STOP = new Set([
+  "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un",
+  "para", "con", "no", "una", "su", "al", "lo", "como", "mas", "más", "keto",
+  "receta", "recetas", "sin", "este", "esta", "muy", "the", "como", "hacer", "casa",
+]);
+
+/** Términos más frecuentes de un grupo de títulos (para etiquetar clusters). */
+function topTerms(titles: string[], n: number): string[] {
+  const counts = new Map<string, number>();
+  for (const t of titles) {
+    const words = t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9ñ ]/g, " ").split(/\s+/)
+      .filter((w) => w.length > 3 && !LABEL_STOP.has(w));
+    for (const w of new Set(words)) counts.set(w, (counts.get(w) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([w]) => w);
 }
 
 function median(xs: number[]): number {
