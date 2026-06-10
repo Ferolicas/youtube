@@ -57,7 +57,7 @@ export async function ingestChannel(): Promise<{
   return { channelId: ch.id, uploadsPlaylistId: uploads };
 }
 
-async function upsertVideo(channelId: string, v: YtVideo): Promise<void> {
+export async function upsertVideo(channelId: string, v: YtVideo): Promise<void> {
   const durationSec = isoDurationToSeconds(v.contentDetails?.duration);
   const { isShort, method } = await detectShort(v.id);
 
@@ -148,6 +148,32 @@ export async function ingestCatalog(): Promise<{ total: number }> {
     await upsertVideo(channelId, v);
     n++;
     if (n % 25 === 0) log.info(`procesados ${n}/${videos.length}`);
+  }
+
+  // Reconciliación: vídeos que están en la BD (p. ej. creados por el import de
+  // Studio sin channel_id) pero que la enumeración de uploads NO devuelve. Se
+  // repescan por ID con videos.list y, SOLO si son del propio canal, se adoptan
+  // (rellena channel_id, título, privacy_status, is_short...). Los ajenos se dejan
+  // para el comando `reconcile` (no se borra nada aquí).
+  const known = await query<{ video_id: string }>(`SELECT video_id FROM videos`);
+  const uploadSet = new Set(ids);
+  const orphanIds = known.map((r) => r.video_id).filter((id) => !uploadSet.has(id));
+  if (orphanIds.length > 0) {
+    const refetched = await getVideosByIds(orphanIds);
+    const returned = new Set(refetched.map((v) => v.id));
+    let adopted = 0;
+    let foreign = 0;
+    for (const v of refetched) {
+      if (v.snippet?.channelId === channelId) {
+        await upsertVideo(channelId, v);
+        adopted++;
+      } else {
+        foreign++;
+      }
+    }
+    const missing = orphanIds.filter((id) => !returned.has(id)).length;
+    n += adopted;
+    log.info(`reconciliación: ${orphanIds.length} huérfanos -> adoptados ${adopted}, ajenos ${foreign}, no encontrados ${missing}`);
   }
 
   // listas y secciones

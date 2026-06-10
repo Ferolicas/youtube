@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   console.log(`Filas procesadas:        ${dataRows.length}`);
   console.log(`studio_content_stats:    ${studioRows}`);
   console.log(`thumbnail_ctr_import:    ${ctrRows}`);
-  console.log(`Vídeos nuevos creados:   ${videosCreated}  ${videosCreated > 0 ? "(is_short sin clasificar → corre reclassify:shorts)" : ""}`);
+  console.log(`Vídeos nuevos creados:   ${videosCreated}  ${videosCreated > 0 ? "(SIN channel_id ni metadatos → el Sync los adopta si son tuyos; los ajenos se limpian con `npm run reconcile`)" : ""}`);
   console.log(`Saltados (id inválido):  ${skipped}`);
   console.log(`NO se tocó: is_short, vistas, retención, ingresos, subs (los mantiene la API).`);
 }

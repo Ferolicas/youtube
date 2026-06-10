@@ -20,7 +20,8 @@
     "verify:llm": "tsx src/workers/verify-llm.ts",
     "reclassify:shorts": "tsx src/workers/reclassify-shorts.ts",
     "import:studio": "tsx src/workers/import-studio.ts",
-    "audios:srt": "tsx src/workers/audios-to-srt.ts"
+    "audios:srt": "tsx src/workers/audios-to-srt.ts",
+    "reconcile": "tsx src/workers/reconcile.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
