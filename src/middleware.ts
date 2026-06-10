@@ -11,6 +11,8 @@ const PUBLIC_PATHS = [
   "/api/auth/google",
   "/api/auth/google/callback",
   "/api/health",
+  // WebSub: Google verifica (GET challenge) y notifica (POST firmado con HMAC).
+  "/api/websub",
 ];
 
 export async function middleware(req: NextRequest) {

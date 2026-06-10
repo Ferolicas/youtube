@@ -53,5 +53,19 @@ module.exports = {
       error_file: "./logs/daily.err.log",
       out_file: "./logs/daily.out.log",
     },
+    {
+      // PULSO en tiempo casi real (default cada 30 min): snapshot de statistics
+      // (~1u por 50 vídeos), VPH, breakouts, renovación WebSub y chequeo de cuota.
+      name: "pk-pulse",
+      script: TSX,
+      args: "src/workers/pulse.ts",
+      cwd: __dirname,
+      autorestart: true,
+      max_memory_restart: "512M",
+      time: true,
+      env: { NODE_ENV: "production", PK_ENV_FILE: ENV_FILE },
+      error_file: "./logs/pulse.err.log",
+      out_file: "./logs/pulse.out.log",
+    },
   ],
 };

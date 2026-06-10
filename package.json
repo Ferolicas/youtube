@@ -15,6 +15,8 @@
     "worker:trends": "tsx src/workers/trends.ts",
     "worker:analysis": "tsx src/workers/analysis.ts",
     "worker:daily": "tsx src/workers/daily.ts",
+    "worker:pulse": "tsx src/workers/pulse.ts",
+    "pulse": "tsx src/workers/pulse.ts --once",
     "pipeline": "tsx src/workers/daily.ts --once",
     "ingest:full": "tsx src/workers/sync.ts --full",
     "verify:llm": "tsx src/workers/verify-llm.ts",
