@@ -97,6 +97,56 @@ export default async function VideoDetailPage({ params }: { params: Promise<{ id
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card>
+          <CardTitle hint={d.seoScore ? `score ${d.seoScore.score}/100` : undefined}>SEO de este vídeo</CardTitle>
+          {d.seoScore ? (
+            <ul className="space-y-1.5">
+              {((d.seoScore.components as { key: string; label: string; points: number; max: number; fix: string | null }[]) ?? [])
+                .filter((c) => c.fix && c.points < c.max)
+                .slice(0, 6)
+                .map((c) => (
+                  <li key={c.key} className="text-xs">
+                    <span className="text-muted">[{c.points}/{c.max}]</span>{" "}
+                    <span className="text-muted">{c.fix}</span>
+                  </li>
+                ))}
+              {((d.seoScore.components as { fix: string | null; points: number; max: number }[]) ?? [])
+                .every((c) => !c.fix || c.points >= c.max) && (
+                <li className="text-sm text-muted">Sin arreglos pendientes. 👌</li>
+              )}
+            </ul>
+          ) : <p className="text-sm text-muted">Ejecuta “Analizar” para el score SEO.</p>}
+        </Card>
+        <Card>
+          <CardTitle hint="detalle YT_SEARCH (Analytics)">Te encuentran buscando…</CardTitle>
+          {d.searchTerms.length ? (
+            <table className="w-full"><tbody>
+              {d.searchTerms.map((t) => (
+                <tr key={t.detail}><Td>{t.detail}</Td><Td className="text-right tabular">{fmtNum(Number(t.views))}</Td></tr>
+              ))}
+            </tbody></table>
+          ) : <p className="text-sm text-muted">Sin términos (poco tráfico de búsqueda o umbral).</p>}
+        </Card>
+        <Card>
+          <CardTitle hint="detalle RELATED_VIDEO">Vídeos que te recomiendan</CardTitle>
+          {d.suggestedBy.length ? (
+            <table className="w-full"><tbody>
+              {d.suggestedBy.map((s) => (
+                <tr key={s.detail}>
+                  <Td>
+                    <a href={`https://youtube.com/watch?v=${s.detail}`} target="_blank" rel="noreferrer" className="hover:text-accent">
+                      {s.title ?? s.detail}
+                    </a>
+                  </Td>
+                  <Td className="text-right tabular">{fmtNum(Number(s.views))}</Td>
+                </tr>
+              ))}
+            </tbody></table>
+          ) : <p className="text-sm text-muted">Sin datos de sugeridos.</p>}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardTitle>Primeros segundos (transcripción)</CardTitle>
           {d.transcriptHead?.snippet ? (

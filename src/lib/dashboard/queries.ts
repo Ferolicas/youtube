@@ -17,6 +17,60 @@ export async function getConnectionStatus() {
   };
 }
 
+/**
+ * Top movers: vídeos con más vistas ganadas en las últimas ~24h, calculado con
+ * los snapshots del pulso (pk-pulse). Requiere al menos 2 snapshots separados.
+ */
+export async function getTopMovers(limit = 8) {
+  return query<{
+    video_id: string; title: string; gained: string; hours: string; vph: string; total: string;
+  }>(`
+    WITH latest AS (
+      SELECT DISTINCT ON (video_id) video_id, captured_at, view_count
+      FROM video_stats_snapshot ORDER BY video_id, captured_at DESC
+    ),
+    day_ago AS (
+      SELECT DISTINCT ON (s.video_id) s.video_id, s.captured_at, s.view_count
+      FROM video_stats_snapshot s
+      WHERE s.captured_at <= now() - interval '20 hours'
+        AND s.captured_at >= now() - interval '36 hours'
+      ORDER BY s.video_id, s.captured_at DESC
+    )
+    SELECT v.video_id, v.title,
+           (l.view_count - d.view_count)::text AS gained,
+           round(EXTRACT(EPOCH FROM (l.captured_at - d.captured_at)) / 3600)::text AS hours,
+           round((l.view_count - d.view_count)
+                 / NULLIF(EXTRACT(EPOCH FROM (l.captured_at - d.captured_at)) / 3600, 0), 1)::text AS vph,
+           l.view_count::text AS total
+    FROM videos v
+    JOIN latest l ON l.video_id = v.video_id
+    JOIN day_ago d ON d.video_id = v.video_id
+    WHERE ${longOnlySql("v")} AND l.view_count > d.view_count
+    ORDER BY (l.view_count - d.view_count) DESC
+    LIMIT $1
+  `, [limit]);
+}
+
+/** Crecimiento del canal: agregados de la serie diaria (channel_stats_daily). */
+export async function getChannelGrowth() {
+  const r = await queryOne<{
+    views_7d: string | null; views_30d: string | null;
+    subs_7d: string | null; subs_30d: string | null;
+    minutes_30d: string | null;
+  }>(`
+    SELECT
+      SUM(views) FILTER (WHERE date >= (now()-interval '7 days')::date)::text AS views_7d,
+      SUM(views) FILTER (WHERE date >= (now()-interval '30 days')::date)::text AS views_30d,
+      SUM(COALESCE(subscribers_gained,0)-COALESCE(subscribers_lost,0))
+        FILTER (WHERE date >= (now()-interval '7 days')::date)::text AS subs_7d,
+      SUM(COALESCE(subscribers_gained,0)-COALESCE(subscribers_lost,0))
+        FILTER (WHERE date >= (now()-interval '30 days')::date)::text AS subs_30d,
+      SUM(estimated_minutes_watched) FILTER (WHERE date >= (now()-interval '30 days')::date)::text AS minutes_30d
+    FROM channel_stats_daily
+  `);
+  return r;
+}
+
 export async function getOverview() {
   const counts = await queryOne<{ total: string; longs: string; shorts: string; transcribed: string }>(`
     SELECT
@@ -144,7 +198,18 @@ export async function getVideoDetail(id: string) {
         `SELECT left(full_text, 1200) AS snippet FROM transcripts WHERE video_id=$1`, [id]),
     ]);
   const tags = await query<{ tag: string }>(`SELECT tag FROM video_tags WHERE video_id=$1 ORDER BY position`, [id]);
-  return { video, retention, traffic, geography, demographics, devices, revenue, daily, outlier, thumb, transcriptHead, tags };
+  // SEO: búsquedas reales que traen a este vídeo + vídeos que lo recomiendan
+  const searchTerms = await query<{ detail: string; views: string }>(
+    `SELECT detail, COALESCE(views,0)::text AS views FROM video_traffic_details
+     WHERE video_id=$1 AND source_type='YT_SEARCH' ORDER BY views DESC NULLS LAST LIMIT 15`, [id]);
+  const suggestedBy = await query<{ detail: string; views: string; title: string | null }>(
+    `SELECT d.detail, COALESCE(d.views,0)::text AS views, v.title
+     FROM video_traffic_details d LEFT JOIN videos v ON v.video_id=d.detail
+     WHERE d.video_id=$1 AND d.source_type='RELATED_VIDEO'
+     ORDER BY d.views DESC NULLS LAST LIMIT 10`, [id]);
+  const seoScore = await queryOne<{ score: number; components: unknown }>(
+    `SELECT score, components FROM video_seo_scores WHERE video_id=$1`, [id]);
+  return { video, retention, traffic, geography, demographics, devices, revenue, daily, outlier, thumb, transcriptHead, tags, searchTerms, suggestedBy, seoScore };
 }
 
 export async function getOutliersData() {
@@ -189,7 +254,73 @@ export async function getTrendsData() {
     `SELECT title, channel_title, view_count::text, vph::text, region, video_id FROM competitor_videos
      ORDER BY vph DESC NULLS LAST LIMIT 25`
   );
-  return { keywords, competitors };
+  // radar: canales seguidos con su velocidad (subs ganados últimos 7d de serie diaria)
+  const radar = await query<{
+    channel_id: string; title: string; subscriber_count: string | null;
+    subs_7d: string | null; videos_7d: string | null; last_checked: string | null;
+  }>(`
+    WITH delta AS (
+      SELECT channel_id,
+             MAX(subscribers) FILTER (WHERE date >= (now()-interval '7 days')::date)
+               - MIN(subscribers) FILTER (WHERE date >= (now()-interval '7 days')::date) AS subs_7d,
+             MAX(videos) FILTER (WHERE date >= (now()-interval '7 days')::date)
+               - MIN(videos) FILTER (WHERE date >= (now()-interval '7 days')::date) AS videos_7d
+      FROM competitor_channel_stats_daily GROUP BY channel_id
+    )
+    SELECT c.channel_id, c.title, c.subscriber_count::text,
+           d.subs_7d::text, d.videos_7d::text, c.last_checked::text
+    FROM competitor_channels c
+    LEFT JOIN delta d ON d.channel_id = c.channel_id
+    WHERE c.active
+    ORDER BY c.subscriber_count DESC NULLS LAST
+    LIMIT 25
+  `);
+  // posiciones: último chequeo por keyword
+  const ranks = await query<{
+    keyword: string; rank: number | null; video_id: string | null; checked_at: string; prev_rank: number | null;
+  }>(`
+    WITH ordered AS (
+      SELECT keyword, region, rank, video_id, checked_at,
+             ROW_NUMBER() OVER (PARTITION BY keyword, region ORDER BY checked_at DESC) AS rn
+      FROM keyword_ranks
+    )
+    SELECT o1.keyword, o1.rank, o1.video_id, o1.checked_at::text,
+           o2.rank AS prev_rank
+    FROM ordered o1
+    LEFT JOIN ordered o2 ON o2.keyword=o1.keyword AND o2.region=o1.region AND o2.rn=2
+    WHERE o1.rn=1
+    ORDER BY o1.rank ASC NULLS LAST, o1.checked_at DESC
+    LIMIT 40
+  `);
+  return { keywords, competitors, radar, ranks };
+}
+
+/** Snapshot de insights de comentarios (preguntas, temas, sentimiento). */
+export async function getCommentsData() {
+  return latestSnapshot<Record<string, unknown>>("comments");
+}
+
+/** SEO scores por vídeo + resumen (gaps de contenido, peores/mejores). */
+export async function getSeoScoresData() {
+  const snapshot = await latestSnapshot<Record<string, unknown>>("seo_scores");
+  const rows = await query<{
+    video_id: string; title: string | null; score: number; components: unknown;
+  }>(`
+    SELECT s.video_id, v.title, s.score, s.components
+    FROM video_seo_scores s JOIN videos v ON v.video_id=s.video_id
+    WHERE ${longOnlySql("v")}
+    ORDER BY s.score ASC
+  `);
+  return { snapshot, rows };
+}
+
+/** Top búsquedas reales del canal (última captura). */
+export async function getChannelSearchTerms(limit = 25) {
+  return query<{ term: string; views: string }>(`
+    SELECT DISTINCT ON (term) term, COALESCE(views,0)::text AS views
+    FROM channel_search_terms
+    ORDER BY term, period_end DESC
+  `).then((rows) => rows.sort((a, b) => Number(b.views) - Number(a.views)).slice(0, limit));
 }
 
 export async function getIdeasData(date?: string) {

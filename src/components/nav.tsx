@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Video, TrendingUp, Users, Image as ImageIcon,
-  Flame, Lightbulb, DollarSign, ClipboardCheck, Wand2, FileText, ChefHat,
+  Flame, Lightbulb, DollarSign, ClipboardCheck, Wand2, FileText, ChefHat, Bell, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/outliers", label: "Outliers", icon: Flame },
   { href: "/guion", label: "Guion", icon: FileText },
   { href: "/audience", label: "Audiencia", icon: Users },
+  { href: "/comments", label: "Comentarios", icon: MessageSquare },
   { href: "/thumbnails", label: "Miniaturas", icon: ImageIcon },
   { href: "/trends", label: "Tendencias", icon: TrendingUp },
   { href: "/ideas", label: "Ideas diarias", icon: Lightbulb },
@@ -20,6 +21,7 @@ const LINKS = [
   { href: "/monetization", label: "Monetización", icon: DollarSign },
   { href: "/config-audit", label: "Config & SEO", icon: ClipboardCheck },
   { href: "/recommendations", label: "Reestructuración", icon: Wand2 },
+  { href: "/alerts", label: "Alertas", icon: Bell },
 ];
 
 export function Nav() {

@@ -1,23 +1,60 @@
 import Link from "next/link";
-import { getOverview } from "@/lib/dashboard/queries";
+import { getOverview, getTopMovers, getChannelGrowth } from "@/lib/dashboard/queries";
 import { Card, CardTitle, Stat, Badge, Th, Td } from "@/components/ui/primitives";
 import { fmtNum } from "@/lib/utils/cn";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const o = await getOverview();
+  const [o, movers, growth] = await Promise.all([
+    getOverview(),
+    getTopMovers(8),
+    getChannelGrowth(),
+  ]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Overview</h1>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Stat label="Suscriptores" value={fmtNum(Number(o.channel?.subscriber_count ?? 0))} accent />
+        <Stat
+          label="Suscriptores"
+          value={fmtNum(Number(o.channel?.subscriber_count ?? 0))}
+          sub={growth?.subs_30d ? `${Number(growth.subs_30d) >= 0 ? "+" : ""}${fmtNum(Number(growth.subs_30d))} en 30d` : undefined}
+          accent
+        />
+        <Stat
+          label="Vistas 7d (canal)"
+          value={growth?.views_7d ? fmtNum(Number(growth.views_7d)) : "—"}
+          sub={growth?.views_30d ? `${fmtNum(Number(growth.views_30d))} en 30d` : "corre un Sync para la serie de canal"}
+        />
         <Stat label="Vídeos largos" value={fmtNum(Number(o.counts?.longs ?? 0))} sub={`mediana ${fmtNum(o.medians.long ?? 0)} vistas`} />
-        <Stat label="Shorts" value={fmtNum(Number(o.counts?.shorts ?? 0))} sub="solo referencia" />
         <Stat label="Transcritos" value={`${fmtNum(Number(o.counts?.transcribed ?? 0))}/${fmtNum(Number(o.counts?.total ?? 0))}`} />
       </div>
+
+      <Card>
+        <CardTitle hint="vistas ganadas últimas ~24h (pulso cada 30 min)">Moviéndose AHORA</CardTitle>
+        {movers.length === 0 ? (
+          <p className="text-sm text-muted">
+            Aún sin datos de pulso suficientes (se necesitan ≥2 snapshots separados ~24h).
+            Arranca <code className="rounded bg-panel2 px-1">pk-pulse</code> en PM2 o corre <code className="rounded bg-panel2 px-1">npm run pulse</code>.
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead><tr><Th>Vídeo</Th><Th className="text-right">+Vistas</Th><Th className="text-right">v/h</Th><Th className="text-right">Total</Th></tr></thead>
+            <tbody>
+              {movers.map((m) => (
+                <tr key={m.video_id}>
+                  <Td><Link href={`/videos/${m.video_id}`} className="hover:text-accent">{m.title}</Link></Td>
+                  <Td className="text-right tabular"><Badge tone="good">+{fmtNum(Number(m.gained))}</Badge></Td>
+                  <Td className="text-right tabular">{m.vph}</Td>
+                  <Td className="text-right tabular text-muted">{fmtNum(Number(m.total))}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
