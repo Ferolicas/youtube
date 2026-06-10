@@ -1,4 +1,5 @@
 import { query } from "@/lib/db/pool";
+import { env } from "@/config/env";
 import { saveSnapshot } from "@/lib/analysis/queries";
 import { mean, median } from "@/lib/analysis/stats";
 import { createLogger } from "@/lib/utils/logger";
@@ -6,11 +7,24 @@ import { createLogger } from "@/lib/utils/logger";
 const log = createLogger("analysis:timing");
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
+/** Hora y día de la semana en la TZ del canal (env.TZ), no UTC. */
+function localHourWeekday(iso: string): { hour: number; weekday: number } {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: env.TZ, hour12: false, hour: "2-digit", weekday: "short",
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+  const wdShort = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wdShort);
+  return { hour, weekday: weekday < 0 ? 0 : weekday };
+}
+
 /**
  * Horas/días óptimos de publicación DERIVADOS DE TUS DATOS (no mitos):
- * cruza la hora/día de publicación de cada vídeo con su rendimiento (vistas y
- * vistas en las primeras 24-48h vía serie diaria). Nota honesta: la API no expone
- * "cuándo están online tus suscriptores"; esto usa el rendimiento real por slot.
+ * cruza la hora/día de publicación de cada vídeo (en TZ del canal) con su
+ * rendimiento temprano (vistas 0-48h vía serie diaria). Nota honesta: la API
+ * no expone "cuándo están online tus suscriptores"; esto usa rendimiento real
+ * por franja. Los vídeos sin serie temprana usan vistas de vida (marcado).
  */
 export async function computeTiming() {
   const rows = await query<{
@@ -32,7 +46,7 @@ export async function computeTiming() {
     FROM videos v
     LEFT JOIN snap ON snap.video_id=v.video_id
     LEFT JOIN early ON early.video_id=v.video_id
-    WHERE v.published_at IS NOT NULL
+    WHERE v.published_at IS NOT NULL AND v.channel_id IS NOT NULL
   `);
 
   for (const fmt of ["long", "short"] as const) {
@@ -42,29 +56,30 @@ export async function computeTiming() {
 
     const byHour = new Map<number, number[]>();
     const byWeekday = new Map<number, number[]>();
+    let lifetimeFallbacks = 0;
     for (const v of vids) {
-      const d = new Date(v.published_at);
-      const h = d.getUTCHours();
-      const wd = d.getUTCDay();
+      const { hour, weekday } = localHourWeekday(v.published_at);
       const score = v.early > 0 ? v.early : v.views;
-      (byHour.get(h) ?? byHour.set(h, []).get(h)!).push(score);
-      (byWeekday.get(wd) ?? byWeekday.set(wd, []).get(wd)!).push(score);
+      if (v.early <= 0) lifetimeFallbacks++;
+      (byHour.get(hour) ?? byHour.set(hour, []).get(hour)!).push(score);
+      (byWeekday.get(weekday) ?? byWeekday.set(weekday, []).get(weekday)!).push(score);
     }
 
     const hours = [...byHour.entries()]
-      .map(([h, xs]) => ({ hour_utc: h, n: xs.length, median_score: Math.round(median(xs)), avg_score: Math.round(mean(xs)) }))
+      .map(([h, xs]) => ({ hour_local: h, n: xs.length, median_score: Math.round(median(xs)), avg_score: Math.round(mean(xs)) }))
       .sort((a, b) => b.median_score - a.median_score);
     const weekdays = [...byWeekday.entries()]
       .map(([wd, xs]) => ({ weekday: WEEKDAYS[wd], idx: wd, n: xs.length, median_score: Math.round(median(xs)) }))
       .sort((a, b) => b.median_score - a.median_score);
 
     await saveSnapshot("timing", fmt, {
-      note: "Derivado del rendimiento real por franja (vistas tempranas 0-48h). UTC.",
-      best_hours_utc: hours.slice(0, 5),
+      note: `Derivado del rendimiento real por franja (vistas tempranas 0-48h). Horas en ${env.TZ}. ${lifetimeFallbacks} vídeos sin serie temprana usan vistas de vida (sesgo a favor de vídeos viejos).`,
+      timezone: env.TZ,
+      best_hours_local: hours.slice(0, 5),
       best_weekdays: weekdays.slice(0, 3),
       all_hours: hours,
       all_weekdays: weekdays,
     });
   }
-  log.info("timing calculado");
+  log.info(`timing calculado (TZ=${env.TZ})`);
 }

@@ -91,11 +91,21 @@ async function persist(videoId: string, segments: Segment[], source: "youtube_ca
       [videoId, env.WHISPER_LANG, source, model, fullText]
     );
     await c.query(`DELETE FROM transcript_segments WHERE video_id=$1`, [videoId]);
-    for (const s of segments) {
+    // inserción por lotes (multi-row): cientos de segmentos por vídeo en 1-2 round-trips
+    const CHUNK = 500;
+    for (let i = 0; i < segments.length; i += CHUNK) {
+      const chunk = segments.slice(i, i + CHUNK);
+      const values: string[] = [];
+      const params: unknown[] = [videoId];
+      for (let j = 0; j < chunk.length; j++) {
+        const base = params.length;
+        params.push(chunk[j]!.idx, chunk[j]!.start, chunk[j]!.end, chunk[j]!.text);
+        values.push(`($1, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+      }
       await c.query(
         `INSERT INTO transcript_segments (video_id, idx, start_sec, end_sec, text)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [videoId, s.idx, s.start, s.end, s.text]
+         VALUES ${values.join(", ")}`,
+        params
       );
     }
   });

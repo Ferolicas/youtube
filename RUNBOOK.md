@@ -237,7 +237,7 @@ npm run migrate
 npm run build
 # Recarga SOLO los procesos de esta app (por nombre). NO uses `pm2 reload all`:
 # el VPS comparte PM2 con otros proyectos (cfanalisis-*, n8n, ketoscan, planetaketo).
-pm2 reload pk-web pk-transcribe pk-daily
+pm2 reload pk-web pk-transcribe pk-daily pk-pulse
 ```
 
 ---
@@ -257,10 +257,38 @@ Retén también `media/` (miniaturas) y `data/` (CSV reporting) si quieres conse
 
 ## 11. Cuotas de API
 
-- Data API: 10.000 u/día. `search` cuesta 100 u → `pk-trends` limita a ~8 búsquedas/día.
-- Analytics: el backfill usa Reporting (barato); el refresco diario solo toca vídeos recientes.
+- Data API: 10.000 u/día. `search` cuesta 100 u → discovery solo el día `TRENDS_SEARCH_DOW`
+  (~8 búsquedas) + `RANK_KEYWORDS_PER_DAY` chequeos de posición (100 u c/u).
+- El **radar de competidores** usa playlists (1 u/canal/día) en vez de search: ~15-30 u/día.
+- El **pulso** (`pk-pulse`, cada 30 min) cuesta ~1 u por 50 vídeos + 1 u del canal:
+  con 300 vídeos ≈ 7 u/pulso ≈ 340 u/día. Trivial frente al límite.
+- Analytics: el refresco diario toca vídeos ACTIVOS (recientes, con vistas en 14d, outliers).
 - Si ves `QUOTA_GUARD` / `paused_quota` en `sync_runs`: es normal, reanuda solo al día siguiente.
 - Sube `QUOTA_*` en `.env` solo si Google te amplía la cuota.
+
+---
+
+## 11b. Tiempo real (pulso, WebSub, alertas)
+
+**Pulso (`pk-pulse`)** — snapshots de vistas cada `CRON_PULSE` (default 30 min):
+alimenta "Moviéndose AHORA" del Overview, detecta **breakouts** (vistas/hora ≥
+`BREAKOUT_MIN_GAIN` y ≥ `BREAKOUT_FACTOR`× su ritmo de 7 días) y renueva WebSub.
+Prueba manual: `npm run pulse`.
+
+**WebSub (push de subidas)** — YouTube avisa al instante cuando publicas tú o un
+competidor seguido. Requisitos:
+1. `APP_URL` debe ser el dominio público **https** (Caddy ya enruta `/api/websub`).
+2. `WEBSUB_SECRET` en `.env` (`openssl rand -hex 24`).
+3. Las suscripciones se crean/renuevan solas en el housekeeping diario del pulso
+   (~08:00). Verifica en BD: `SELECT * FROM websub_subscriptions;`
+
+**Alertas Telegram** — crea un bot con @BotFather → `TELEGRAM_BOT_TOKEN`; tu
+`TELEGRAM_CHAT_ID` (p. ej. con @userinfobot). Sin esto, las alertas quedan solo
+en la campana de la web (tabla `alerts`). Tipos: breakout, nuevo vídeo,
+competidor publicó, pipeline falló, token caducado, cuota ≥80%.
+
+**Estado en vivo en la web** — la barra superior usa SSE (`/api/events`): muestra
+el job en curso, deshabilita botones duplicados y refresca datos al terminar.
 
 ---
 

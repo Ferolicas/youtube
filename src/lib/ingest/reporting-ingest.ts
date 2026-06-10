@@ -136,17 +136,18 @@ async function loadChannelBasic(csv: string): Promise<void> {
   if (iDate < 0 || iVideo < 0) return;
 
   // Agregamos por (video_id, date) porque el reporte desglosa por país/estado.
-  const agg = new Map<string, { date: string; video: string; views: number; watch: number; avgDur: number; n: number }>();
+  // average_view_duration se pondera por vistas (antes: promedio simple sesgado).
+  const agg = new Map<string, { date: string; video: string; views: number; watch: number; durWeighted: number }>();
   for (const row of rows) {
     const video = row[iVideo];
     const date = row[iDate];
     if (!video || !date) continue;
     const key = `${video}|${date}`;
-    const cur = agg.get(key) ?? { date: fmtDate(date), video, views: 0, watch: 0, avgDur: 0, n: 0 };
-    cur.views += iViews >= 0 ? Number(row[iViews] ?? 0) : 0;
+    const cur = agg.get(key) ?? { date: fmtDate(date), video, views: 0, watch: 0, durWeighted: 0 };
+    const rowViews = iViews >= 0 ? Number(row[iViews] ?? 0) : 0;
+    cur.views += rowViews;
     cur.watch += iWatch >= 0 ? Number(row[iWatch] ?? 0) : 0;
-    cur.avgDur += iAvgDur >= 0 ? Number(row[iAvgDur] ?? 0) : 0;
-    cur.n += 1;
+    cur.durWeighted += iAvgDur >= 0 ? Number(row[iAvgDur] ?? 0) * Math.max(rowViews, 0) : 0;
     agg.set(key, cur);
   }
 
@@ -160,7 +161,7 @@ async function loadChannelBasic(csv: string): Promise<void> {
        ON CONFLICT (video_id, date) DO UPDATE SET
          views = COALESCE(video_stats_daily.views, EXCLUDED.views),
          estimated_minutes_watched = COALESCE(video_stats_daily.estimated_minutes_watched, EXCLUDED.estimated_minutes_watched)`,
-      [v.video, v.date, v.views, v.watch, v.n > 0 ? v.avgDur / v.n : null]
+      [v.video, v.date, v.views, v.watch, v.views > 0 ? v.durWeighted / v.views : null]
     );
   }
 }

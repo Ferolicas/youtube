@@ -57,17 +57,22 @@ export async function generateRecommendations(): Promise<number> {
     }
   }
 
-  // --- Cadencia / timing ---
-  const timing = await latestSnapshot<{ best_hours_utc: { hour_utc: number; median_score: number }[]; best_weekdays: { weekday: string }[] }>("timing", "long");
-  if (timing?.best_hours_utc?.length) {
-    const hours = timing.best_hours_utc.slice(0, 2).map((h) => `${h.hour_utc}:00 UTC`).join(" y ");
+  // --- Cadencia / timing (horas en TZ del canal) ---
+  const timing = await latestSnapshot<{
+    timezone?: string;
+    best_hours_local: { hour_local: number; median_score: number }[];
+    best_weekdays: { weekday: string }[];
+  }>("timing", "long");
+  if (timing?.best_hours_local?.length) {
+    const tz = timing.timezone ?? "hora local";
+    const hours = timing.best_hours_local.slice(0, 2).map((h) => `${h.hour_local}:00`).join(" y ");
     const days = (timing.best_weekdays ?? []).slice(0, 2).map((d) => d.weekday).join(" y ");
     recs.push({
       area: "cadence",
       title: "Publica en tus franjas de mayor arranque",
-      detail: `Tus mejores arranques (vistas 0-48h) ocurren a las ${hours}${days ? `, días ${days}` : ""}. Programa ahí tus vídeos largos.`,
+      detail: `Tus mejores arranques (vistas 0-48h) ocurren a las ${hours} (${tz})${days ? `, días ${days}` : ""}. Programa ahí tus vídeos largos.`,
       impact: 3, effort: 1,
-      evidence: { best_hours: timing.best_hours_utc.slice(0, 3) },
+      evidence: { best_hours: timing.best_hours_local.slice(0, 3), timezone: tz },
     });
   }
 
@@ -97,6 +102,51 @@ export async function generateRecommendations(): Promise<number> {
       detail: `El ${aud.latam_share_pct}% de tus vistas son LATAM. Usa español neutro, ejemplos de ingredientes y precios locales, y miniaturas con códigos visuales de tu top de países.`,
       impact: 3, effort: 2,
       evidence: { latam_share_pct: aud.latam_share_pct, top: aud.top_countries.slice(0, 5) },
+    });
+  }
+
+  // --- SEO: gaps de contenido (búsquedas/tendencias sin vídeo que las cubra) ---
+  const seoScores = await latestSnapshot<{
+    avg_score: number | null;
+    worst?: { video_id: string; title: string | null; score: number }[];
+    content_gaps?: { term: string; weight: number; source: string }[];
+  }>("seo_scores");
+  if (seoScores?.content_gaps?.length) {
+    const top = seoScores.content_gaps.slice(0, 3).map((g) => `«${g.term}»`).join(", ");
+    recs.push({
+      area: "seo",
+      title: "Cubre los gaps de contenido detectados",
+      detail: `Hay ${seoScores.content_gaps.length} términos con demanda (búsquedas reales/tendencias) sin vídeo tuyo que los cubra. Empieza por: ${top}.`,
+      impact: 4, effort: 3,
+      evidence: { gaps: seoScores.content_gaps.slice(0, 5) },
+    });
+  }
+  if (seoScores?.worst?.length) {
+    const worst = seoScores.worst.filter((w) => w.score < 50).slice(0, 3);
+    if (worst.length > 0) {
+      recs.push({
+        area: "seo",
+        title: `${worst.length}+ vídeos con SEO score <50: arreglos de 10 minutos`,
+        detail: `Revisa la pestaña Config & SEO: cada vídeo tiene su lista de arreglos (keyword en título, capítulos, tags, descripción). Empieza por: ${worst.map((w) => `"${w.title}"`).join(", ")}.`,
+        impact: 4, effort: 2,
+        evidence: { worst },
+      });
+    }
+  }
+
+  // --- Audiencia: preguntas más votadas = demanda directa ---
+  const comments = await latestSnapshot<{
+    available: boolean;
+    top_questions?: { text: string; likes: number; video_title: string | null }[];
+  }>("comments");
+  if (comments?.available && (comments.top_questions?.length ?? 0) >= 3) {
+    const qs = comments.top_questions!.slice(0, 3);
+    recs.push({
+      area: "content",
+      title: "Tu audiencia ya te pidió estos vídeos (comentarios)",
+      detail: qs.map((q) => `«${q.text.slice(0, 100)}» (${q.likes} ♥)`).join(" · "),
+      impact: 4, effort: 2,
+      evidence: { questions: qs },
     });
   }
 

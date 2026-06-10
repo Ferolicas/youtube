@@ -1,4 +1,5 @@
 import { query } from "@/lib/db/pool";
+import { env } from "@/config/env";
 import { latestSnapshot } from "@/lib/analysis/queries";
 import { longOnlySql } from "@/lib/analysis/scope";
 import { llmAvailable, llmComplete, extractJson } from "@/lib/ideas/llm";
@@ -60,6 +61,8 @@ interface Context {
   topClusters: { label: string; keywords: string[]; avg_views: number; avg_rpm: number | null }[];
   outlierTitles: string[];
   trendKeywords: string[];
+  searchTerms: string[];
+  audienceQuestions: string[];
   competitorTitles: string[];
   bestHours: number[];
   channelTitle: string;
@@ -78,10 +81,16 @@ async function buildContext(): Promise<Context> {
     `SELECT keyword FROM trend_keywords WHERE for_date >= (now()-interval '3 day')::date
      GROUP BY keyword ORDER BY SUM(score) DESC LIMIT 20`
   );
+  // búsquedas REALES que ya traen vistas al canal (mejor señal SEO disponible)
+  const search = await query<{ term: string }>(
+    `SELECT DISTINCT ON (term) term FROM channel_search_terms
+     ORDER BY term, period_end DESC`
+  );
   const competitors = await query<{ title: string }>(
     `SELECT cv.title FROM competitor_videos cv WHERE ${longOnlySql("cv")} ORDER BY cv.vph DESC NULLS LAST LIMIT 12`
   );
-  const timing = await latestSnapshot<{ best_hours_utc: { hour_utc: number }[] }>("timing", "long");
+  const timing = await latestSnapshot<{ best_hours_local: { hour_local: number }[] }>("timing", "long");
+  const commentsSnap = await latestSnapshot<{ top_questions?: { text: string; likes: number }[] }>("comments");
   const channel = await query<{ title: string }>(`SELECT title FROM channels LIMIT 1`);
 
   return {
@@ -91,8 +100,10 @@ async function buildContext(): Promise<Context> {
     })),
     outlierTitles: outliers.map((o) => o.title).filter(Boolean) as string[],
     trendKeywords: trendKw.map((t) => t.keyword),
+    searchTerms: search.map((s) => s.term).slice(0, 15),
+    audienceQuestions: (commentsSnap?.top_questions ?? []).slice(0, 8).map((q) => q.text),
     competitorTitles: competitors.map((c) => c.title).filter(Boolean) as string[],
-    bestHours: (timing?.best_hours_utc ?? []).map((h) => h.hour_utc).slice(0, 3),
+    bestHours: (timing?.best_hours_local ?? []).map((h) => h.hour_local).slice(0, 3),
     channelTitle: channel[0]?.title ?? "Planeta Keto",
   };
 }
@@ -105,18 +116,21 @@ Respondes SOLO con un array JSON válido, sin texto adicional.`;
   const user = `Canal: ${ctx.channelTitle}
 Clusters de mayor rendimiento (tema -> vistas medias, RPM): ${JSON.stringify(ctx.topClusters)}
 Títulos de mis outliers (lo que ya funcionó): ${JSON.stringify(ctx.outlierTitles)}
+Búsquedas REALES con las que la gente ya me encuentra (úsalas en títulos): ${JSON.stringify(ctx.searchTerms)}
+Preguntas más votadas de mi audiencia en comentarios (demanda directa): ${JSON.stringify(ctx.audienceQuestions)}
 Keywords en tendencia (keto/LATAM): ${JSON.stringify(ctx.trendKeywords)}
 Títulos competidores en alza: ${JSON.stringify(ctx.competitorTitles)}
-Mejores horas de publicación (UTC): ${JSON.stringify(ctx.bestHours)}
+Mejores horas de publicación (hora local del canal): ${JSON.stringify(ctx.bestHours)}
 
-Genera 8 ideas de vídeo priorizadas. Cada objeto del array:
+Genera 8 ideas de vídeo priorizadas. Prioriza ideas que respondan preguntas reales de la audiencia
+o cubran búsquedas reales sin vídeo. Cada objeto del array:
 {
   "title": "título optimizado <=60 chars con keyword + gancho",
   "hook_angle": "ángulo del gancho de los primeros 15s",
   "thumbnail_brief": "qué poner en la miniatura (texto corto, elemento visual, emoción)",
   "suggested_duration_sec": entero (>=480 si buscas mid-rolls AdSense),
   "keywords": ["5-8 keywords"],
-  "suggested_publish_hour_utc": entero 0-23 (usa mis mejores horas),
+  "suggested_publish_hour_utc": entero 0-23 EN HORA LOCAL del canal (usa mis mejores horas),
   "priority": número 1-100,
   "rationale": {"por_que": "...", "evidencia": "qué dato lo respalda"}
 }`;
@@ -158,9 +172,16 @@ function generateDataDriven(ctx: Context): Idea[] {
 
 function capitalize(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 function todayDate(): string { return new Date().toISOString().slice(0, 10); }
-function nextOccurrence(hourUtc: number): Date {
-  const d = new Date();
-  d.setUTCHours(hourUtc, 0, 0, 0);
-  if (d.getTime() < Date.now()) d.setUTCDate(d.getUTCDate() + 1);
+
+/** Próxima ocurrencia de una HORA LOCAL (env.TZ) como timestamp real. */
+function nextOccurrence(hourLocal: number): Date {
+  const now = new Date();
+  const currentLocalHour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "2-digit", hour12: false, timeZone: env.TZ }).format(now)
+  ) % 24;
+  let deltaHours = (hourLocal - currentLocalHour + 24) % 24;
+  if (deltaHours === 0) deltaHours = 24; // la hora actual ya pasó (minutos en curso)
+  const d = new Date(now.getTime() + deltaHours * 3600_000);
+  d.setMinutes(0, 0, 0);
   return d;
 }
